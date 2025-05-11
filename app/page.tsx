@@ -604,26 +604,61 @@ function CategoryColumn({
       // Must be completed to show in this section
       if (!task.completed) return false;
       
-      // For today, show all completed tasks
-      if (isTodayDay) return true;
-      
-      // For past days, only show tasks that were completed on that specific day
-      // Try to match the completion date with the current day
-      if (task.completionDateObj) {
-        const completionDate = new Date(task.completionDateObj);
-        return (
-          completionDate.getFullYear() === day.date.getFullYear() &&
-          completionDate.getMonth() === day.date.getMonth() &&
-          completionDate.getDate() === day.date.getDate()
+      // For today, show only tasks completed today
+      if (isTodayDay) {
+        const todayDate = new Date();
+        const isCompletedToday = (
+          task.completionDateObj?.getFullYear() === todayDate.getFullYear() &&
+          task.completionDateObj?.getMonth() === todayDate.getMonth() &&
+          task.completionDateObj?.getDate() === todayDate.getDate()
         );
-      } else if (task.completionDate) {
-        // Fall back to string comparison if no date object
-        return task.completionDate === todayStr;
+        return isCompletedToday;
+      }
+      
+      // For past days, check if the task was completed on this specific day
+      // First try to use the completionDateObj if available
+      if (task.completionDateObj) {
+        try {
+          const completionDate = new Date(task.completionDateObj);
+          // Check if the completion date matches this day
+          const isMatch = (
+            completionDate.getFullYear() === day.date.getFullYear() &&
+            completionDate.getMonth() === day.date.getMonth() &&
+            completionDate.getDate() === day.date.getDate()
+          );
+          
+          return isMatch;
+        } catch (e) {
+          console.error("Error parsing completionDateObj:", e);
+        }
+      }
+      
+      // Check the direct MMM d format match first
+      if (task.completionDateMMMD) {
+        const dayFormattedMMMD = format(day.date, "MMM d");
+        if (task.completionDateMMMD === dayFormattedMMMD) {
+          return true;
+        }
+      }
+      
+      // Fall back to completionDate string comparison with multiple formats
+      if (task.completionDate) {
+        // Try multiple date format comparisons
+        const dayFormatted = format(day.date, "yyyy-MM-dd"); // ISO format
+        const dayFormattedAlt = format(day.date, "MMM d"); // Legacy format
+        
+        const isMatch = (
+          task.completionDate === dayFormatted ||
+          task.completionDate === dayFormattedAlt ||
+          task.completionDate === todayStr
+        );
+        
+        return isMatch;
       }
       
       return false;
     });
-
+    
     // Deduplicate by ID, ensuring a task appears in only one section
     const seen = new Set();
     const dedupedOverdue = overdue.filter((t) => {
@@ -1055,14 +1090,30 @@ export default function WeeklyTaskManager() {
       
       // Set or clear the completion date based on the completion status
       const today = new Date()
-      const completionDate = newCompletedStatus ? format(today, "MMM d") : undefined
+      
+      // Store both ISO format and MMM d format to ensure compatibility
+      const completionDate = newCompletedStatus 
+        ? format(today, "yyyy-MM-dd") 
+        : undefined;
+      const completionDateMMMD = newCompletedStatus 
+        ? format(today, "MMM d") 
+        : undefined;
       const completionDateObj = newCompletedStatus ? today : null
+      
+      console.log("Setting completion date:", {
+        completionDate,
+        completionDateMMMD,
+        completionDateObj,
+        taskId,
+        taskText: task.text
+      });
 
       await updateTask({
         ...task,
         completed: newCompletedStatus,
         subtasks: updatedSubtasks,
         completionDate,
+        completionDateMMMD,
         completionDateObj,
       })
     }
@@ -1083,8 +1134,25 @@ export default function WeeklyTaskManager() {
       // Set the completion date if the task is being completed
       const today = new Date()
       const shouldComplete = allSubtasksCompleted && updatedSubtasks.length > 0 && !task.completed
-      const completionDate = shouldComplete ? format(today, "MMM d") : task.completionDate
+      
+      // Store both ISO format and MMM d format 
+      const completionDate = shouldComplete 
+        ? format(today, "yyyy-MM-dd") 
+        : task.completionDate;
+      const completionDateMMMD = shouldComplete 
+        ? format(today, "MMM d") 
+        : task.completionDateMMMD;
       const completionDateObj = shouldComplete ? today : task.completionDateObj
+      
+      if (shouldComplete) {
+        console.log("Setting completion date from subtask completion:", {
+          completionDate,
+          completionDateMMMD,
+          completionDateObj,
+          taskId,
+          taskText: task.text
+        });
+      }
 
       // Update the task with the new subtasks and potentially mark the task as completed
       const updatedTask = {
@@ -1092,6 +1160,7 @@ export default function WeeklyTaskManager() {
         subtasks: updatedSubtasks,
         completed: allSubtasksCompleted && updatedSubtasks.length > 0 ? true : task.completed,
         completionDate,
+        completionDateMMMD,
         completionDateObj,
       }
 

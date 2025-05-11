@@ -49,12 +49,32 @@ export function useTasks() {
                .forEach(task => tasksMap.set(task.id, task));
           
           // Then add tasks completed on this day (if not already in the map)
-          tasks.filter(task => task.completionDate === dateStr)
-               .forEach(task => {
-                 if (!tasksMap.has(task.id)) {
-                   tasksMap.set(task.id, task);
-                 }
-               });
+          tasks.filter(task => {
+            if (task.completionDateObj) {
+              const completionDate = new Date(task.completionDateObj);
+              return completionDate.getFullYear() === date.getFullYear() &&
+                     completionDate.getMonth() === date.getMonth() &&
+                     completionDate.getDate() === date.getDate();
+            }
+            if (task.completionDate) {
+              try {
+                // Try to parse completionDate and compare
+                const completionD = new Date(task.completionDate);
+                if (!isNaN(completionD.getTime())) { // Check if date is valid
+                  return completionD.getFullYear() === date.getFullYear() &&
+                         completionD.getMonth() === date.getMonth() &&
+                         completionD.getDate() === date.getDate();
+                }
+              } catch (e) { /* Ignore parsing errors, fallback to string comparison */ }
+              // Fallback to string comparison for "MMM d" format
+              return task.completionDate === dateStr;
+            }
+            return false;
+          }).forEach(task => {
+            if (!tasksMap.has(task.id)) {
+              tasksMap.set(task.id, task);
+            }
+          });
           
           const tasksForDay = Array.from(tasksMap.values())
             .sort((a, b) => (a.position || 0) - (b.position || 0))
@@ -93,12 +113,30 @@ export function useTasks() {
                .forEach(task => tasksMap.set(task.id, task));
           
           // Then add tasks completed on this day (if not already in the map)
-          tasks.filter(task => task.completionDate === dateStr)
-               .forEach(task => {
-                 if (!tasksMap.has(task.id)) {
-                   tasksMap.set(task.id, task);
-                 }
-               });
+          tasks.filter(task => {
+            if (task.completionDateObj) {
+              const completionDate = new Date(task.completionDateObj);
+              return completionDate.getFullYear() === date.getFullYear() &&
+                     completionDate.getMonth() === date.getMonth() &&
+                     completionDate.getDate() === date.getDate();
+            }
+            if (task.completionDate) {
+              try {
+                const completionD = new Date(task.completionDate);
+                if (!isNaN(completionD.getTime())) {
+                  return completionD.getFullYear() === date.getFullYear() &&
+                         completionD.getMonth() === date.getMonth() &&
+                         completionD.getDate() === date.getDate();
+                }
+              } catch (e) { /* Ignore parsing errors, fallback to string comparison */ }
+              return task.completionDate === dateStr;
+            }
+            return false;
+          }).forEach(task => {
+            if (!tasksMap.has(task.id)) {
+              tasksMap.set(task.id, task);
+            }
+          });
           
           let dayTasks = Array.from(tasksMap.values())
             .sort((a, b) => (a.position || 0) - (b.position || 0))
@@ -140,12 +178,41 @@ export function useTasks() {
           const dateStr = format(date, "MMM d")
           const isPast = isBefore(date, today) && !isToday(date)
 
+          // Get unique tasks that either start on this day or were completed on this day
+          const tasksMap = new Map();
+          tasks.filter(task => task.startDate === dateStr)
+               .forEach(task => tasksMap.set(task.id, task));
+          tasks.filter(task => {
+            if (task.completionDateObj) {
+              const completionDate = new Date(task.completionDateObj);
+              return completionDate.getFullYear() === date.getFullYear() &&
+                     completionDate.getMonth() === date.getMonth() &&
+                     completionDate.getDate() === date.getDate();
+            }
+            if (task.completionDate) {
+              try {
+                const completionD = new Date(task.completionDate);
+                if (!isNaN(completionD.getTime())) {
+                  return completionD.getFullYear() === date.getFullYear() &&
+                         completionD.getMonth() === date.getMonth() &&
+                         completionD.getDate() === date.getDate();
+                }
+              } catch (e) { /* Ignore parsing errors, fallback to string comparison */ }
+              return task.completionDate === dateStr;
+            }
+            return false;
+          }).forEach(task => {
+            if (!tasksMap.has(task.id)) {
+              tasksMap.set(task.id, task);
+            }
+          });
+          const tasksForDay = Array.from(tasksMap.values())
+            .sort((a, b) => (a.position || 0) - (b.position || 0))
+
           return {
             date,
             isPast,
-            tasks: tasks
-              .filter((task) => task.startDate === dateStr)
-              .sort((a, b) => (a.position || 0) - (b.position || 0)),
+            tasks: tasksForDay,
           }
         })
         
@@ -179,12 +246,30 @@ export function useTasks() {
                .forEach(task => tasksMap.set(task.id, task));
           
           // Then add tasks completed on this day (if not already in the map)
-          tasks.filter(task => task.completionDate === dateStr)
-               .forEach(task => {
-                 if (!tasksMap.has(task.id)) {
-                   tasksMap.set(task.id, task);
-                 }
-               });
+          tasks.filter(task => {
+            if (task.completionDateObj) {
+              const completionDate = new Date(task.completionDateObj);
+              return completionDate.getFullYear() === date.getFullYear() &&
+                     completionDate.getMonth() === date.getMonth() &&
+                     completionDate.getDate() === date.getDate();
+            }
+            if (task.completionDate) {
+              try {
+                const completionD = new Date(task.completionDate);
+                if (!isNaN(completionD.getTime())) {
+                  return completionD.getFullYear() === date.getFullYear() &&
+                         completionD.getMonth() === date.getMonth() &&
+                         completionD.getDate() === date.getDate();
+                }
+              } catch (e) { /* Ignore parsing errors, fallback to string comparison */ }
+              return task.completionDate === dateStr;
+            }
+            return false;
+          }).forEach(task => {
+            if (!tasksMap.has(task.id)) {
+              tasksMap.set(task.id, task);
+            }
+          });
           
           let dayTasks = Array.from(tasksMap.values())
             .sort((a, b) => (a.position || 0) - (b.position || 0))

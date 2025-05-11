@@ -22,6 +22,7 @@ export interface Task {
   dueDateObj?: Date | null
   position?: number
   completionDate?: string
+  completionDateMMMD?: string
   completionDateObj?: Date | null
 }
 
@@ -103,28 +104,38 @@ export async function getTasks(): Promise<Task[]> {
     if (subtasksError) throw subtasksError
 
     // Map subtasks to their parent tasks
-    const tasksWithSubtasks = tasks.map((task) => ({
-      ...task,
-      id: task.id,
-      text: task.text,
-      completed: task.completed,
-      category: task.category,
-      time: task.time,
-      timeDisplay: task.time_display,
-      description: task.description,
-      startDate: task.start_date,
-      dueDate: task.due_date,
-      position: task.position,
-      completionDate: task.completion_date,
-      completionDateObj: task.completion_date ? new Date(task.completion_date) : null,
-      subtasks: subtasks
-        .filter((subtask) => subtask.task_id === task.id)
-        .map((subtask) => ({
-          id: subtask.id,
-          text: subtask.text,
-          completed: subtask.completed,
-        })),
-    }))
+    const tasksWithSubtasks = tasks.map((task) => {
+      const completionDateObj = task.completion_date ? new Date(task.completion_date + 'T00:00:00') : null;
+      
+      // Debugging log for completionDateObj
+      // if (task.completion_date === "2025-05-08") {
+      //   console.log(`Task ${task.text} - adjusted completionDateObj:`, completionDateObj);
+      // }
+      
+      return {
+        ...task,
+        id: task.id,
+        text: task.text,
+        completed: task.completed,
+        category: task.category,
+        time: task.time,
+        timeDisplay: task.time_display,
+        description: task.description,
+        startDate: task.start_date,
+        dueDate: task.due_date,
+        position: task.position,
+        completionDate: task.completion_date,
+        completionDateMMMD: task.completion_date_mmmd,
+        completionDateObj,
+        subtasks: subtasks
+          .filter((subtask) => subtask.task_id === task.id)
+          .map((subtask) => ({
+            id: subtask.id,
+            text: subtask.text,
+            completed: subtask.completed,
+          })),
+      };
+    })
 
     return tasksWithSubtasks
   } catch (error) {
@@ -191,7 +202,17 @@ export async function saveTask(task: Task): Promise<Task | null> {
       due_date: task.dueDate,
       position: task.position || 0,
       completion_date: task.completionDate,
+      completion_date_mmmd: task.completionDateMMMD,
       user_id: userId,
+    }
+
+    // Debugging log for taskData
+    if (task.completionDate === "2025-05-08") {
+      console.log(`Saving task ${task.text} with completion dates:`, {
+        completionDate: task.completionDate,
+        completionDateMMMD: task.completionDateMMMD,
+        completionDateObj: task.completionDateObj
+      });
     }
 
     // Insert or update task
@@ -212,7 +233,8 @@ export async function saveTask(task: Task): Promise<Task | null> {
       startDate: data.start_date,
       dueDate: data.due_date,
       position: data.position,
-      completionDate: data.completion_date
+      completionDate: data.completion_date,
+      completionDateMMMD: data.completion_date_mmmd
     }
 
     // Handle subtasks

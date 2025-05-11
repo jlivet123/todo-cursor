@@ -1,0 +1,13 @@
+This project uses Supabase as the backend.
+
+Supabase provides:
+- PostgreSQL as the database
+- Auth via Supabase's built-in authentication
+- Real-time subscriptions for data updates
+
+When Supabase is not configured, the app falls back to `localStorage` for demo/offline mode.
+
+Avoid hardcoding connection logic; rely on environment variables.
+
+Use `completion_date`, `start_date`, and `category` fields to organize task data. Auth hooks must gracefully degrade if no session is active.
+
