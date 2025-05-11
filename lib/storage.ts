@@ -21,6 +21,8 @@ export interface Task {
   startDateObj?: Date | null
   dueDateObj?: Date | null
   position?: number
+  completionDate?: string
+  completionDateObj?: Date | null
 }
 
 // Mock user for local storage
@@ -113,6 +115,8 @@ export async function getTasks(): Promise<Task[]> {
       startDate: task.start_date,
       dueDate: task.due_date,
       position: task.position,
+      completionDate: task.completion_date,
+      completionDateObj: task.completion_date ? new Date(task.completion_date) : null,
       subtasks: subtasks
         .filter((subtask) => subtask.task_id === task.id)
         .map((subtask) => ({
@@ -186,6 +190,7 @@ export async function saveTask(task: Task): Promise<Task | null> {
       start_date: task.startDate,
       due_date: task.dueDate,
       position: task.position || 0,
+      completion_date: task.completionDate,
       user_id: userId,
     }
 
@@ -193,28 +198,43 @@ export async function saveTask(task: Task): Promise<Task | null> {
     const { data, error } = await supabase.from("tasks").upsert(taskData).select().single()
 
     if (error) throw error
+    
+    // Map the returned data from Supabase to our Task object
+    const savedTask = {
+      ...task,
+      id: data.id,
+      text: data.text,
+      completed: data.completed,
+      category: data.category,
+      time: data.time,
+      timeDisplay: data.time_display,
+      description: data.description,
+      startDate: data.start_date,
+      dueDate: data.due_date,
+      position: data.position,
+      completionDate: data.completion_date
+    }
 
     // Handle subtasks
     if (task.subtasks && task.subtasks.length > 0) {
       // Prepare subtask data
       const subtaskData = task.subtasks.map((subtask, index) => ({
         id: subtask.id,
-        task_id: task.id,
+        task_id: savedTask.id,
         text: subtask.text,
         completed: subtask.completed,
         position: index,
       }))
 
-      // Insert or update subtasks
-      const { error: subtaskError } = await supabase.from("subtasks").upsert(subtaskData)
-
-      if (subtaskError) throw subtaskError
+      // Delete all existing subtasks and insert new ones
+      await supabase.from("subtasks").delete().eq("task_id", savedTask.id)
+      await supabase.from("subtasks").insert(subtaskData)
+      
+      // Make sure the subtasks are included in the saved task
+      savedTask.subtasks = task.subtasks;
     }
 
-    return {
-      ...task,
-      id: data.id,
-    }
+    return savedTask
   } catch (error) {
     console.error("Error saving task to Supabase:", error)
 

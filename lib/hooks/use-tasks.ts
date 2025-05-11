@@ -40,26 +40,79 @@ export function useTasks() {
           const dateStr = format(date, "MMM d")
           const isPast = isBefore(date, today) && !isToday(date)
 
+          // Get unique tasks that either start on this day or were completed on this day
+          // Use a Map to ensure we don't have duplicates based on task ID
+          const tasksMap = new Map();
+          
+          // First add tasks that start on this day
+          tasks.filter(task => task.startDate === dateStr)
+               .forEach(task => tasksMap.set(task.id, task));
+          
+          // Then add tasks completed on this day (if not already in the map)
+          tasks.filter(task => task.completionDate === dateStr)
+               .forEach(task => {
+                 if (!tasksMap.has(task.id)) {
+                   tasksMap.set(task.id, task);
+                 }
+               });
+          
+          const tasksForDay = Array.from(tasksMap.values())
+            .sort((a, b) => (a.position || 0) - (b.position || 0))
+
           return {
             date,
             isPast,
-            tasks: tasks
-              .filter((task) => task.startDate === dateStr)
-              .sort((a, b) => (a.position || 0) - (b.position || 0)),
+            tasks: tasksForDay
           }
         })
+        
+        const todayDateStr = format(today, "MMM d")
+        // Get all incomplete tasks from past days for rollover
+        const incompletePastTasks = tasks.filter(task => {
+          // If there's no startDate, skip this task
+          if (!task.startDate) return false;
+          
+          // Check if the task is from a past date and is incomplete
+          const taskDate = new Date(task.startDateObj || task.startDate);
+          return !task.completed && 
+                 isBefore(taskDate, today) && 
+                 !isToday(taskDate);
+        });
 
         const futureDays = Array.from({ length: visibleDaysRange.future }, (_, i) => {
           const date = addDays(today, i)
           const dateStr = format(date, "MMM d")
           const isPast = false // Future days are never past
-
+          
+          // Get unique tasks that either start on this day or were completed on this day
+          // Use a Map to ensure we don't have duplicates based on task ID
+          const tasksMap = new Map();
+          
+          // First add tasks that start on this day
+          tasks.filter(task => task.startDate === dateStr)
+               .forEach(task => tasksMap.set(task.id, task));
+          
+          // Then add tasks completed on this day (if not already in the map)
+          tasks.filter(task => task.completionDate === dateStr)
+               .forEach(task => {
+                 if (!tasksMap.has(task.id)) {
+                   tasksMap.set(task.id, task);
+                 }
+               });
+          
+          let dayTasks = Array.from(tasksMap.values())
+            .sort((a, b) => (a.position || 0) - (b.position || 0))
+          
+          // Add incomplete past tasks to today and future days
+          if (i === 0 || format(date, "MMM d") === todayDateStr) {
+            // Only add incomplete past tasks to today
+            dayTasks = [...incompletePastTasks, ...dayTasks];
+          }
+          
           return {
             date,
             isPast,
-            tasks: tasks
-              .filter((task) => task.startDate === dateStr)
-              .sort((a, b) => (a.position || 0) - (b.position || 0)),
+            tasks: dayTasks,
           }
         })
 
@@ -95,23 +148,56 @@ export function useTasks() {
               .sort((a, b) => (a.position || 0) - (b.position || 0)),
           }
         })
-
+        
         setDays((prevDays) => [...newPastDays, ...prevDays])
         setVisibleDaysRange((prev) => ({ ...prev, past: newPastDaysCount }))
       } else {
         // Add more future days
         const currentLastDay = days[days.length - 1].date
+        // Get all incomplete tasks from past days for rollover
+        const incompletePastTasks = tasks.filter(task => {
+          // If there's no startDate, skip this task
+          if (!task.startDate) return false;
+          
+          // Check if the task is from a past date and is incomplete
+          const taskDate = new Date(task.startDateObj || task.startDate);
+          return !task.completed && 
+                 isBefore(taskDate, today);
+        });
+        
         const newFutureDays = Array.from({ length: count }, (_, i) => {
           const date = addDays(currentLastDay, i + 1)
           const dateStr = format(date, "MMM d")
           const isPast = false
 
+          // Get unique tasks that either start on this day or were completed on this day
+          // Use a Map to ensure we don't have duplicates based on task ID
+          const tasksMap = new Map();
+          
+          // First add tasks that start on this day
+          tasks.filter(task => task.startDate === dateStr)
+               .forEach(task => tasksMap.set(task.id, task));
+          
+          // Then add tasks completed on this day (if not already in the map)
+          tasks.filter(task => task.completionDate === dateStr)
+               .forEach(task => {
+                 if (!tasksMap.has(task.id)) {
+                   tasksMap.set(task.id, task);
+                 }
+               });
+          
+          let dayTasks = Array.from(tasksMap.values())
+            .sort((a, b) => (a.position || 0) - (b.position || 0))
+            
+          // For today, include incomplete past tasks as well
+          if (isToday(date)) {
+            dayTasks = [...incompletePastTasks, ...dayTasks];
+          }
+            
           return {
             date,
             isPast,
-            tasks: tasks
-              .filter((task) => task.startDate === dateStr)
-              .sort((a, b) => (a.position || 0) - (b.position || 0)),
+            tasks: dayTasks,
           }
         })
 
