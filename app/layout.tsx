@@ -24,5 +24,15 @@ export default function RootLayout({
 }
 
 export const metadata = {
-      generator: 'v0.dev'
-    };
+  generator: 'v0.dev',
+  title: 'Todo Cursor - Task Management App',
+  description: 'A personal task management application',
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    }
+  }
+};
