@@ -619,31 +619,132 @@ export function useTasks() {
     }
   }
 
-  // Update task positions after drag and drop
+  // Update all task positions across all days
   const updateTaskPositions = async () => {
     try {
-      // Update positions in all tasks
-      const updatedTasks = [...allTasks]
+      const supabase = getSupabaseClient()
+      if (!supabase) return
 
-      // Update positions based on days array
+      // Get all tasks
+      const updatedTasks: Task[] = []
+
+      // Update position for each task based on its index in the day's task list
       days.forEach((day) => {
-        day.tasks.forEach((task, index) => {
-          const taskIndex = updatedTasks.findIndex((t) => t.id === task.id)
-          if (taskIndex !== -1) {
-            updatedTasks[taskIndex] = {
-              ...updatedTasks[taskIndex],
+        // Get tasks for this day, group by category
+        const workTasks = day.tasks.filter((task) => task.category === "work")
+        const personalTasks = day.tasks.filter((task) => task.category === "personal")
+
+        // Update positions for work tasks
+        workTasks.forEach((task, index) => {
+          if (task.position !== index) {
+            updatedTasks.push({
+              ...task,
               position: index,
-            }
+            })
+          }
+        })
+
+        // Update positions for personal tasks
+        personalTasks.forEach((task, index) => {
+          if (task.position !== index) {
+            updatedTasks.push({
+              ...task,
+              position: index,
+            })
           }
         })
       })
 
-      setAllTasks(updatedTasks)
+      if (updatedTasks.length === 0) return
 
-      // Save all updated tasks to Supabase or localStorage
-      await saveTasks(updatedTasks)
+      // Batch update all tasks with new positions
+      const { error } = await supabase.from("tasks").upsert(
+        updatedTasks.map((task) => ({
+          id: task.id,
+          position: task.position,
+        }))
+      )
+
+      if (error) {
+        console.error("Error updating task positions:", error)
+      } else {
+        // Update local tasks
+        setAllTasks((prevTasks) =>
+          prevTasks.map((task) => {
+            const updatedTask = updatedTasks.find((t) => t.id === task.id)
+            if (updatedTask) {
+              return {
+                ...task,
+                position: updatedTask.position,
+              }
+            }
+            return task
+          })
+        )
+      }
     } catch (err) {
       console.error("Error updating task positions:", err)
+    }
+  }
+  
+  // Update task positions just for one specific day and category
+  const updateTaskPositionsForDayAndCategory = async (dayIndex: number, category: 'work' | 'personal') => {
+    try {
+      const supabase = getSupabaseClient()
+      if (!supabase || dayIndex < 0 || dayIndex >= days.length) return
+      
+      console.log(`Updating positions for day ${dayIndex}, category ${category}`)
+      
+      // Get tasks for this day and category
+      const tasksToUpdate = days[dayIndex].tasks
+        .filter(task => task.category === category)
+        .map((task, index) => ({
+          ...task,
+          position: index // Set the position to match the index in the array
+        }));
+      
+      if (tasksToUpdate.length === 0) return
+      
+      console.log(`Updating positions for ${tasksToUpdate.length} tasks`)
+      
+      // Log the positions we're setting for debugging
+      tasksToUpdate.forEach(task => {
+        console.log(`Task: ${task.text} (ID: ${task.id}) - Setting position: ${task.position}`);
+      });
+      
+      // Instead of a direct upsert which could violate RLS policies,
+      // use the saveTask function to update tasks one by one
+      // This ensures all required fields are included
+      try {
+        console.log(`Updating positions for ${tasksToUpdate.length} tasks via saveTask`)
+        
+        // Process tasks sequentially to avoid race conditions
+        for (const task of tasksToUpdate) {
+          // Preserve all existing task fields and just update the position
+          // This avoids RLS policy issues by including all required fields
+          await saveTask(task);
+        }
+        
+        console.log(`Successfully updated positions for ${tasksToUpdate.length} tasks`);
+        
+        // Update local state
+        setAllTasks(prevTasks => 
+          prevTasks.map(task => {
+            const updatedTask = tasksToUpdate.find(t => t.id === task.id);
+            if (updatedTask) {
+              return {
+                ...task,
+                position: updatedTask.position
+              };
+            }
+            return task;
+          })
+        )
+      } catch (error) {
+        console.error("Error updating task positions for day and category:", error)
+      }
+    } catch (err) {
+      console.error("Error updating task positions for day and category:", err)
     }
   }
 
@@ -803,8 +904,11 @@ export function useTasks() {
         // Update the state
         setDays(newDays);
         
-        // Only update positions once reordering is done, not on every move
-        // This will be triggered by onDragEnd in the UI component
+        // Update the task positions in the database to persist the new order
+        // A small delay ensures the state update has completed
+        setTimeout(() => {
+          updateTaskPositionsForDayAndCategory(toDayIndex, fromColumnType);
+        }, 100);
       }
     } catch (err) {
       console.error("Error moving task:", err);
