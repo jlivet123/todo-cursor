@@ -1467,14 +1467,17 @@ export default function WeeklyTaskManager() {
           </div>
 
           <div className="mt-auto space-y-2">
-            <Button
-              variant="outline"
-              className="w-full flex items-center justify-center gap-2 border-slate-600 text-slate-200"
-              onClick={() => setShowDiagnostic(true)}
-            >
-              <AlertCircle className="h-4 w-4" />
-              Supabase Diagnostic
-            </Button>
+            {/* Only show Supabase Diagnostic in development environment */}
+            {(process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost') && (
+              <Button
+                variant="outline"
+                className="w-full flex items-center justify-center gap-2 border-slate-600 text-slate-200"
+                onClick={() => setShowDiagnostic(true)}
+              >
+                <AlertCircle className="h-4 w-4" />
+                Supabase Diagnostic
+              </Button>
+            )}
             <div
               className="flex items-center p-2 rounded-lg bg-slate-700 cursor-pointer hover:bg-slate-600"
               onClick={() => router.push("/profile")}
