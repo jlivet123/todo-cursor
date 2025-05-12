@@ -1,5 +1,6 @@
 import { getSupabaseClient, isSupabaseConfigured } from "./supabase"
 import { sampleTasks } from "./sample-data"
+import { format } from "date-fns"
 
 export interface Subtask {
   id: string
@@ -107,10 +108,11 @@ export async function getTasks(): Promise<Task[]> {
     const tasksWithSubtasks = tasks.map((task) => {
       const completionDateObj = task.completion_date ? new Date(task.completion_date + 'T00:00:00') : null;
       
-      // Debugging log for completionDateObj
-      // if (task.completion_date === "2025-05-08") {
-      //   console.log(`Task ${task.text} - adjusted completionDateObj:`, completionDateObj);
-      // }
+      // Generate the MMM d format from the completion date if available
+      let completionDateMMMD;
+      if (task.completion_date && completionDateObj && !isNaN(completionDateObj.getTime())) {
+        completionDateMMMD = format(completionDateObj, "MMM d");
+      }
       
       return {
         ...task,
@@ -125,7 +127,8 @@ export async function getTasks(): Promise<Task[]> {
         dueDate: task.due_date,
         position: task.position,
         completionDate: task.completion_date,
-        completionDateMMMD: task.completion_date_mmmd,
+        // Use our generated MMM d format since the column doesn't exist in the database
+        completionDateMMMD: completionDateMMMD,
         completionDateObj,
         subtasks: subtasks
           .filter((subtask) => subtask.task_id === task.id)
@@ -147,6 +150,8 @@ export async function getTasks(): Promise<Task[]> {
 
 // Save a task to Supabase or localStorage
 export async function saveTask(task: Task): Promise<Task | null> {
+  console.log(`Attempting to save task: ${task.text} (ID: ${task.id}) with start date: ${task.startDate}`);
+
   // If Supabase is not configured, use localStorage
   if (!isSupabaseConfigured()) {
     const tasks = getTasksFromLocalStorage()
@@ -159,6 +164,7 @@ export async function saveTask(task: Task): Promise<Task | null> {
     }
 
     saveTasksToLocalStorage(tasks)
+    console.log(`Task saved to localStorage: ${task.text} (ID: ${task.id})`);
     return task
   }
 
@@ -175,6 +181,7 @@ export async function saveTask(task: Task): Promise<Task | null> {
     }
 
     saveTasksToLocalStorage(tasks)
+    console.log(`Task saved to localStorage: ${task.text} (ID: ${task.id})`);
     return task
   }
 
@@ -189,7 +196,24 @@ export async function saveTask(task: Task): Promise<Task | null> {
       throw new Error("User not authenticated")
     }
 
-    // Prepare task data for Supabase
+    // Store the MMM d format locally for client-side filtering
+    // but don't send it to Supabase if the column doesn't exist
+    let completionDateMMMD = task.completionDateMMMD;
+    if (task.completionDate && !completionDateMMMD) {
+      try {
+        // Try to generate the MMM d format from the ISO date
+        const completionDate = new Date(task.completionDate + 'T00:00:00');
+        if (!isNaN(completionDate.getTime())) {
+          completionDateMMMD = format(completionDate, "MMM d");
+          // Update the task object with the generated value for local use
+          task.completionDateMMMD = completionDateMMMD;
+        }
+      } catch (e) {
+        console.error("Error generating completionDateMMMD:", e);
+      }
+    }
+    
+    // Prepare task data for Supabase - only include fields that exist in the database
     const taskData = {
       id: task.id,
       text: task.text,
@@ -202,18 +226,12 @@ export async function saveTask(task: Task): Promise<Task | null> {
       due_date: task.dueDate,
       position: task.position || 0,
       completion_date: task.completionDate,
-      completion_date_mmmd: task.completionDateMMMD,
+      // Don't include completion_date_mmmd as it doesn't exist in the database
       user_id: userId,
     }
 
     // Debugging log for taskData
-    if (task.completionDate === "2025-05-08") {
-      console.log(`Saving task ${task.text} with completion dates:`, {
-        completionDate: task.completionDate,
-        completionDateMMMD: task.completionDateMMMD,
-        completionDateObj: task.completionDateObj
-      });
-    }
+    console.log(`Saving task to Supabase: ${task.text} (ID: ${task.id}) with data:`, taskData);
 
     // Insert or update task
     const { data, error } = await supabase.from("tasks").upsert(taskData).select().single()
@@ -237,24 +255,38 @@ export async function saveTask(task: Task): Promise<Task | null> {
       completionDateMMMD: data.completion_date_mmmd
     }
 
-    // Handle subtasks
-    if (task.subtasks && task.subtasks.length > 0) {
-      // Prepare subtask data
-      const subtaskData = task.subtasks.map((subtask, index) => ({
-        id: subtask.id,
-        task_id: savedTask.id,
-        text: subtask.text,
-        completed: subtask.completed,
-        position: index,
-      }))
+    console.log(`Task saved to Supabase: ${savedTask.text} (ID: ${savedTask.id})`);
 
-      // Delete all existing subtasks and insert new ones
-      await supabase.from("subtasks").delete().eq("task_id", savedTask.id)
-      await supabase.from("subtasks").insert(subtaskData)
-      
-      // Make sure the subtasks are included in the saved task
-      savedTask.subtasks = task.subtasks;
+    // Process subtasks if they exist
+    // Note: For task moves between days, we now use a direct update in use-tasks.ts
+    // which avoids calling this function altogether for simple date/category changes
+    if (task.subtasks && task.subtasks.length > 0) {
+      try {
+        // Prepare subtask data
+        const subtaskData = task.subtasks.map((subtask, index) => ({
+          id: subtask.id,
+          task_id: savedTask.id,
+          text: subtask.text,
+          completed: subtask.completed,
+          position: index,
+        }))
+
+        // Use upsert instead of delete+insert to avoid conflicts
+        const { error: subtaskError } = await supabase
+          .from("subtasks")
+          .upsert(subtaskData, { onConflict: 'id' })
+        
+        if (subtaskError) {
+          console.error("Error upserting subtasks:", subtaskError);
+          // Even if there's an error with subtasks, continue with the task
+        }
+      } catch (subtaskError) {
+        console.error("Error handling subtasks:", subtaskError);
+      }
     }
+    
+    // Always include the subtasks in the returned task object
+    savedTask.subtasks = task.subtasks || [];
 
     return savedTask
   } catch (error) {
@@ -272,6 +304,7 @@ export async function saveTask(task: Task): Promise<Task | null> {
       }
 
       saveTasksToLocalStorage(tasks)
+      console.log(`Task saved to localStorage: ${task.text} (ID: ${task.id})`);
     }
 
     return task

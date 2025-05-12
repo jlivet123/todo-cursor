@@ -70,6 +70,7 @@ function DraggableTask({
     toDayIndex: number,
     fromColumnType: "personal" | "work",
     toColumnType: "personal" | "work",
+    taskId?: string, // Added taskId parameter to fix type errors
   ) => void
   isPastDay: boolean
 }) {
@@ -96,21 +97,27 @@ function DraggableTask({
         return
       }
 
+      const dragTaskId = item.taskId
       const dragIndex = item.index
       const dragDayIndex = item.dayIndex
       const dragColumnType = item.columnType
+      const hoverTaskId = task.id
       const hoverIndex = index
       const hoverDayIndex = dayIndex
       const hoverColumnType = columnType
 
+      // Log the dragged task info for debugging
+      console.log(`Dragging task ${dragTaskId} (${item.taskText || 'unknown'}) from day ${dragDayIndex} to day ${hoverDayIndex}`)
+
       // Don't replace items with themselves
-      if (item.taskId === task.id) {
+      if (dragTaskId === hoverTaskId) {
         return
       }
 
       // For day-to-day or column-to-column dragging, allow the move immediately
       if (dragDayIndex !== hoverDayIndex || dragColumnType !== hoverColumnType) {
-        moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType)
+        // Pass both taskId and index, so moveTask can use taskId for reliable identification
+        moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
         item.index = hoverIndex
         item.dayIndex = hoverDayIndex
         item.columnType = hoverColumnType
@@ -134,7 +141,7 @@ function DraggableTask({
       }
 
       // Time to actually perform the action
-      moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType)
+      moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
 
       // Note: we're mutating the monitor item here!
       // Generally it's better to avoid mutations,
@@ -270,12 +277,16 @@ function CompactTask({
         return
       }
 
+      const dragTaskId = item.taskId
       const dragIndex = item.index
       const dragDayIndex = item.dayIndex
       const dragColumnType = item.columnType
       const hoverIndex = index
       const hoverDayIndex = dayIndex
       const hoverColumnType = columnType
+      
+      // Log the task being dragged for debugging
+      console.log(`Dragging task ID ${dragTaskId} from day ${dragDayIndex} to day ${hoverDayIndex}`)
 
       // Don't replace items with themselves
       if (dragIndex === hoverIndex && dragDayIndex === hoverDayIndex && dragColumnType === hoverColumnType) {
@@ -317,7 +328,7 @@ function CompactTask({
       }
 
       // Time to actually perform the action
-      moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType)
+      moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
 
       // Note: we're mutating the monitor item here!
       // Generally it's better to avoid mutations,
@@ -487,7 +498,12 @@ function CategoryColumn({
 
   // Get regular tasks (not overdue)
   const regularTasks = sortedTasks.filter(
-    (task) => !(!task.completed && task.dueDate && isBefore(new Date(task.dueDate), new Date()) && !isPastDay),
+    (task) => !(!task.completed && task.dueDate && isBefore(new Date(task.dueDate), new Date()) && !isPastDay)
+  )
+
+  // Ensure tasks for future dates are displayed
+  const futureTasks = sortedTasks.filter(
+    (task) => !task.completed && !isPastDay
   )
 
   // Count of tasks
@@ -583,21 +599,36 @@ function CategoryColumn({
     // Section 2: To-dos
     const todos = tasks.filter((task) => {
       if (task.completed) return false;
-      // Only show incomplete tasks on today if their startDate is in the past or today
-      if (!isTodayDay) return false;
-      if (task.startDate) {
-        const start = new Date(task.startDateObj || day.date);
-        if (isBefore(start, day.date) || format(start, "MMM d") === todayStr) {
-          // Only show if not due/overdue (handled above)
-          if (!task.dueDate || format(new Date(task.dueDate), "MMM d") === todayStr) {
-            return true;
-          }
+      
+      // For future dates, show tasks that start on that specific date
+      const isFutureDay = !isPastDay && !isTodayDay;
+      if (isFutureDay) {
+        if (task.startDate) {
+          // Show tasks that start on this future date
+          return format(new Date(task.startDateObj || task.startDate), "MMM d") === todayStr;
         }
         return false;
-      } else {
-        // No startDate: treat as today
-        return true;
       }
+      
+      // For today, show incomplete tasks if their startDate is in the past or today
+      if (isTodayDay) {
+        if (task.startDate) {
+          const start = new Date(task.startDateObj || day.date);
+          if (isBefore(start, day.date) || format(start, "MMM d") === todayStr) {
+            // Only show if not due/overdue (handled above)
+            if (!task.dueDate || format(new Date(task.dueDate), "MMM d") === todayStr) {
+              return true;
+            }
+          }
+          return false;
+        } else {
+          // No startDate: treat as today
+          return true;
+        }
+      }
+      
+      // For past days, don't show incomplete tasks
+      return false;
     });
     // Section 3: Complete (completed on this day only)
     const complete = tasks.filter(task => {
@@ -992,7 +1023,8 @@ export default function WeeklyTaskManager() {
     dragDayIndex: number,
     hoverDayIndex: number,
     dragColumnType: 'work' | 'personal',
-    hoverColumnType: 'work' | 'personal'
+    hoverColumnType: 'work' | 'personal',
+    taskId?: string  // Add taskId parameter
   ) => {
     // Prevent moving tasks to past days
     if (hoverDayIndex < 0) {
@@ -1000,7 +1032,8 @@ export default function WeeklyTaskManager() {
     }
 
     // Call the original moveTask function from useTasks
-    originalMoveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType)
+    // Include the taskId for reliable task identification
+    originalMoveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, taskId)
   }, [originalMoveTask])
 
   // Initialize state for new task inputs
@@ -1076,7 +1109,6 @@ export default function WeeklyTaskManager() {
   }
 
   const toggleTaskCompletion = async (dayIndex: number, taskId: string) => {
-    // We allow toggling completion on any day (past or present) now
     const task = days[dayIndex].tasks.find((t) => t.id === taskId)
     if (task) {
       // Toggle the task completion status
@@ -1099,14 +1131,12 @@ export default function WeeklyTaskManager() {
         ? format(today, "MMM d") 
         : undefined;
       const completionDateObj = newCompletedStatus ? today : null
-      
-      console.log("Setting completion date:", {
-        completionDate,
-        completionDateMMMD,
-        completionDateObj,
-        taskId,
-        taskText: task.text
-      });
+
+      // If uncompleting, move the task to today
+      if (!newCompletedStatus) {
+        task.startDate = format(today, "MMM d")
+        task.startDateObj = today
+      }
 
       await updateTask({
         ...task,
