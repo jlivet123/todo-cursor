@@ -1,0 +1,60 @@
+Frontend:
+Next.js - React framework with server-side rendering capabilities
+React - JavaScript library for building user interfaces
+TypeScript - Typed superset of JavaScript
+Tailwind CSS - Utility-first CSS framework for styling
+Lucide React - Icon library
+date-fns - Modern JavaScript date utility library
+React DnD (React Drag and Drop) - For drag-and-drop functionality
+
+Backend/Database:
+Supabase - Open source Firebase alternative providing:
+
+Authentication
+PostgreSQL database
+
+Real-time subscriptions
+State Management:
+React's built-in hooks (useState, useEffect, useCallback)
+Custom hooks for task and authentication management
+Development Tools:
+npm/Node.js for package management
+Next.js development server
+
+The application is structured as a modern single-page application with server components, following the file-based routing pattern of Next.js. It has a fallback to localStorage when Supabase is not configured, allowing for offline or demo usage.
+
+Business Functionality
+
+Summary
+THe app is a personal todo list tracker and management system.
+
+Task Display Summary
+The task manager displays tasks in a 2-column layout per day: Work and Personal. The app always opens with today as the default day, with the ability to scroll forward through future days.
+
+📆 Task Placement Logic
+Tasks are shown under their start date.
+
+Active (incomplete) tasks with a start date of today or earlier always appear under today.
+
+Completed tasks appear on the day they were completed, regardless of start date.
+
+Due date is not used for filtering or placement.
+
+🧩 Daily Task Grouping
+Each day's columns are grouped into:
+
+Overdue (shown only under today's date)
+
+To-Dos (incomplete, starting today)
+
+Completed (tasks finished on that day)
+
+↔️ Drag-and-Drop Behavior
+Dragging between columns (Work ↔ Personal) updates the task's category.
+
+Dragging to another day updates the task’s start date to the target day.
+
+Dragging to another day & column updates both the start date and category.
+
+📂 Column Management
+Each day's Work and Personal columns are collapsible, allowing for streamlined viewing.

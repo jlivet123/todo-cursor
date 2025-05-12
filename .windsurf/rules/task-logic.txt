@@ -1,0 +1,52 @@
+This is a task management app displaying tasks in a 2-column layout per day:
+- Work
+- Personal
+
+The app always loads with **today** by default.
+Tasks are grouped by:
+- Overdue (only shown under today's column)
+- To-Dos (incomplete tasks with a start date of today)
+- Completed (based on actual completion date)
+
+Drag-and-drop behavior:
+- Dragging between columns updates the task's `category`
+- Dragging across days updates the `start_date`
+- Dragging to a new day and column updates both
+
+Tasks are filtered by `start_date`, not `due_date`.
+Each day's Work and Personal columns are collapsible.
+
+Daily 2-Column Layout
+Each day is split into Work and Personal columns
+
+The app always loads with today as the default view
+
+You can scroll forward to future days
+
+Task Placement Rules
+Tasks are shown based on their start date
+
+Active tasks (incomplete, with a start date of today or earlier) always appear under today
+
+Completed tasks appear on the day they were completed
+
+Due dates are not used in placement logic
+
+Task Grouping Per Column
+Each day’s Work and Personal column shows three sections:
+
+Overdue – Only appears in today’s column
+
+To-Dos – Incomplete tasks starting today
+
+Completed – Tasks completed that day
+
+🔁 Drag-and-Drop Behavior
+Dragging between Work/Personal changes the task's category
+
+Dragging to a different day updates the task’s start date
+
+Dragging to a different column and day updates both start date and category
+
+📂 Column Controls
+Each Work and Personal column is collapsible, providing a clean, focused view.

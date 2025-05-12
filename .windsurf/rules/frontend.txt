@@ -1,0 +1,10 @@
+You are working in a modern frontend stack using the following technologies:
+- Next.js for React server components and routing
+- TypeScript (use strong typing and avoid `any`)
+- Tailwind CSS for styling (prefer utility classes, no inline styles)
+- Lucide React for icons
+- date-fns for date formatting and comparisons
+- React DnD for drag-and-drop (use hooks, maintain accessibility)
+All components should be written using React functional components.
+Prefer hooks over class-based logic. Group related logic into custom hooks.
+
