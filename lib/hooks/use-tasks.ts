@@ -83,29 +83,90 @@ export function useTasks() {
         // Group tasks by start date
         const today = startOfToday()
 
-        // Generate days for the visible range
-        const pastDays = Array.from({ length: visibleDaysRange.past }, (_, i) => {
-          const date = subDays(today, visibleDaysRange.past - i)
-          const dateStr = format(date, "MMM d")
-          const isPast = isBefore(date, today) && !isToday(date)
+        // Efficiently generate date strings for comparison
+        const todayFormatted = format(today, "MMM d");
+        const futureDateStrings = Array.from(
+          { length: visibleDaysRange.future }, 
+          (_, i) => format(addDays(today, i), "MMM d")
+        );
+        
+        // Cache tomorrow's date string for frequent comparisons
+        const tomorrowFormatted = format(addDays(today, 1), "MMM d");
+        
+        console.log(`Today is ${todayFormatted}, tomorrow is ${tomorrowFormatted}`);
 
-          // Get unique tasks that either start on this day or were completed on this day
-          // Use a Map to ensure we don't have duplicates based on task ID
-          const tasksMap = new Map();
+        // Get all TRULY incomplete tasks from PAST days ONLY for rollover
+        const incompletePastTasks = tasks.filter(task => {
+          // Skip completed tasks immediately
+          if (task.completed) return false;
           
-          // First add tasks that start on this day
-          tasks.filter(task => task.startDate === dateStr)
-               .forEach(task => tasksMap.set(task.id, task));
+          // Skip tasks with no start date
+          if (!task.startDate) return false;
+
+          // EXPLICITLY exclude tomorrow's tasks from showing up today
+          if (task.startDate === tomorrowFormatted) {
+            console.log(`Task ${task.text} is scheduled for tomorrow (${tomorrowFormatted}), NOT showing today`);
+            return false;
+          }
           
-          // Then add tasks completed on this day (if not already in the map)
-          tasks.filter(task => {
+          // Also check future dates beyond tomorrow
+          if (futureDateStrings.slice(1).includes(task.startDate)) { // slice(1) removes today
+            console.log(`Task ${task.text} is scheduled for a future date (${task.startDate}), NOT showing today`);
+            return false;
+          }
+          
+          // Exclude tasks explicitly scheduled for today
+          if (task.startDate === todayFormatted) {
+            console.log(`Task ${task.text} is scheduled for today (${todayFormatted}), not considered 'past'`);
+            return false;
+          }
+          
+          // If we have a date object, use it for reliable comparison
+          if (task.startDateObj) {
+            // Only include if it's strictly from past (before today)
+            return isBefore(task.startDateObj, today) && !isToday(task.startDateObj);
+          }
+          
+          // For tasks with string dates we need to be more careful
+          try {
+            // Try parsing as ISO date first
+            const taskDate = new Date(task.startDate);
+            if (!isNaN(taskDate.getTime())) {
+              return isBefore(taskDate, today) && !isToday(taskDate);
+            }
+            
+            // If we get here, assume the task is from the past 
+            // since we already eliminated today and future dates
+            console.log(`Task ${task.text} with date ${task.startDate} presumed to be from past, rolling to today`);
+            return true;
+          } catch (e) {
+            console.error(`Error determining if task is from past: ${task.text}`, e);
+            return false;
+          }
+        });
+
+        // Create past days
+        const pastDays = Array.from({ length: visibleDaysRange.past }, (_, i) => {
+          const date = subDays(today, visibleDaysRange.past - i);
+          const dateStr = format(date, "MMM d");
+          const isPast = isBefore(date, today) && !isToday(date);
+          
+          // Get tasks for this past day
+          const tasksForDay = tasks.filter(task => {
+            // Match tasks that start on this day
+            if (task.startDate === dateStr) return true;
+            
+            // Match tasks completed on this day
             if (task.completionDateObj) {
               const completionDate = new Date(task.completionDateObj);
               return completionDate.getFullYear() === date.getFullYear() &&
                      completionDate.getMonth() === date.getMonth() &&
                      completionDate.getDate() === date.getDate();
             }
+            
             if (task.completionDate) {
+              if (task.completionDate === dateStr) return true;
+              
               try {
                 const completionD = new Date(task.completionDate);
                 if (!isNaN(completionD.getTime())) {
@@ -113,80 +174,20 @@ export function useTasks() {
                          completionD.getMonth() === date.getMonth() &&
                          completionD.getDate() === date.getDate();
                 }
-              } catch (e) { /* Ignore parsing errors, fallback to string comparison */ }
-              return task.completionDate === dateStr;
+              } catch (e) { /* Ignore parsing errors */ }
             }
+            
             return false;
-          }).forEach(task => {
-            if (!tasksMap.has(task.id)) {
-              tasksMap.set(task.id, task);
-            }
-          });
+          }).sort((a, b) => (a.position || 0) - (b.position || 0));
           
-          const tasksForDay = Array.from(tasksMap.values())
-            .sort((a, b) => (a.position || 0) - (b.position || 0))
-
           return {
             date,
             isPast,
             tasks: tasksForDay
-          }
-        })
-        
-        const todayDateStr = format(today, "MMM d")
-        // Get all incomplete tasks from past days for rollover
-        const incompletePastTasks = tasks.filter(task => {
-          // If there's no startDate, skip this task
-          if (!task.startDate) return false;
-          
-          // Only include tasks from past dates, not today or future dates
-          try {
-            // First try using the startDateObj if available
-            if (task.startDateObj) {
-              return !task.completed && 
-                     isBefore(task.startDateObj, today) && 
-                     !isToday(task.startDateObj);
-            }
-            
-            // Otherwise try to parse the startDate string
-            const taskDate = new Date(task.startDate);
-            // Check if it's a valid date and is in the past
-            if (!isNaN(taskDate.getTime())) {
-              return !task.completed && 
-                     isBefore(taskDate, today) && 
-                     !isToday(taskDate);
-            }
-            
-            // For MMM d format strings, we need to parse differently
-            // Compare the startDate with today's formatted date
-            const todayFormatted = format(today, "MMM d");
-            const startDateParts = task.startDate.split(" ");
-            if (startDateParts.length === 2) {
-              // If the task's startDate is today's date in MMM d format, it's not a past task
-              if (task.startDate === todayFormatted) return false;
-              
-              // If it's a future date, don't include it as a past task
-              const allDatesMap = new Map();
-              // Create a map of all the dates we're showing in MMM d format
-              days.forEach(day => {
-                allDatesMap.set(format(day.date, "MMM d"), day);
-              });
-              
-              // If the task's startDate is in the future
-              const dateObj = allDatesMap.get(task.startDate);
-              if (dateObj && !isBefore(dateObj.date, today)) {
-                return false;
-              }
-            }
-            
-            // If we can't parse it and it's not today, assume it might be a past date
-            return !task.completed && task.startDate !== todayFormatted;
-          } catch (e) {
-            console.error("Error determining if task is from past:", e);
-            return false;
-          }
+          };
         });
 
+        // Create future days (including today)
         const futureDays = Array.from({ length: visibleDaysRange.future }, (_, i) => {
           const date = addDays(today, i);
           const dateStr = format(date, "MMM d");
@@ -198,41 +199,23 @@ export function useTasks() {
           if (i === 0) {
             // TODAY ONLY: Include specific logic for today
             
-            // 1. Tasks explicitly assigned to today
-            const todaysAssignedTasks = tasks.filter(task => 
-              task.startDate === dateStr && !task.completed
-            );
+            // 1. Tasks explicitly assigned to today (only exact matches for today's date)
+            const todaysAssignedTasks = tasks.filter(task => {
+              // Only include tasks where the startDate exactly matches today's date string
+              if (task.startDate === dateStr && !task.completed) {
+                return true;
+              }
+              
+              // Or if startDateObj is available and matches today
+              if (task.startDateObj && !task.completed) {
+                return isToday(task.startDateObj);
+              }
+              
+              return false;
+            });
             
             // 2. Incomplete tasks from past dates (rollover)
-            const rolloverTasks = tasks.filter(task => {
-              // Skip if no start date or if already added to today
-              if (!task.startDate || todaysAssignedTasks.some(t => t.id === task.id)) {
-                return false;
-              }
-              
-              // Skip if completed
-              if (task.completed) {
-                return false;
-              }
-              
-              // Skip if start date is today or in future
-              if (task.startDate === dateStr) {
-                return false; // Today's tasks already added above
-              }
-              
-              // For dates in "MMM d" format, we need to check dates carefully
-              const allDays = [...pastDays, ...futureDays.slice(0, i)];
-              const futureDateStrs = futureDays.slice(i).map(d => format(d.date, "MMM d"));
-              
-              // If the task's start date matches any future day, it's not a rollover
-              if (futureDateStrs.includes(task.startDate)) {
-                console.log(`Task ${task.text} has future start date ${task.startDate}, not rolling over to today`);
-                return false;
-              }
-              
-              // If we get here, it's a past incomplete task
-              return true;
-            });
+            // We've already calculated these above
             
             // 3. Tasks completed today
             const completedToday = tasks.filter(task => {
@@ -260,7 +243,7 @@ export function useTasks() {
             const todayTaskMap = new Map<string, Task>();
             
             // Add in order of priority (completed tasks will override incomplete)
-            [...todaysAssignedTasks, ...rolloverTasks, ...completedToday].forEach(task => {
+            [...todaysAssignedTasks, ...incompletePastTasks, ...completedToday].forEach(task => {
               todayTaskMap.set(task.id, task);
             });
             
@@ -269,13 +252,38 @@ export function useTasks() {
           } else {
             // FUTURE DAYS: Only include tasks explicitly for this day + completed on this day
             
-            // 1. Tasks explicitly assigned to this future day
+            // 1. Tasks explicitly and ONLY assigned to this future day
             const assignedToThisDay = tasks.filter(task => {
+              // First, exclude completed tasks from future dates (they should only show on completion date)
+              if (task.completed) {
+                // For completed tasks, check if they were completed on this day
+                if (task.completionDateObj) {
+                  const completionDate = new Date(task.completionDateObj);
+                  const matches = completionDate.getFullYear() === date.getFullYear() &&
+                                 completionDate.getMonth() === date.getMonth() &&
+                                 completionDate.getDate() === date.getDate();
+                  if (matches) {
+                    console.log(`Completed task ${task.text} showing on ${dateStr} because it was completed on this day`);
+                  }
+                  return matches;
+                }
+                
+                if (task.completionDate === dateStr) {
+                  console.log(`Completed task ${task.text} showing on ${dateStr} because completionDate matches`);
+                  return true;
+                }
+                
+                // If not completed on this day, don't show it
+                return false;
+              }
+              
+              // For incomplete tasks, strictly match this day's date
               if (task.startDate === dateStr) {
-                console.log(`Task ${task.text} assigned to future day ${dateStr} by startDate match`);
+                console.log(`Task ${task.text} assigned to future day ${dateStr} by exact startDate match`);
                 return true;
               }
               
+              // Use startDateObj for precise date matching if available
               if (task.startDateObj) {
                 const doesMatch = format(task.startDateObj, "MMM d") === dateStr;
                 if (doesMatch) {
@@ -284,6 +292,7 @@ export function useTasks() {
                 return doesMatch;
               }
               
+              // No match found
               return false;
             });
             
