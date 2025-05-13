@@ -23,6 +23,11 @@ import {
   CheckCircle,
   CornerDownRight,
   AlertCircle,
+  CheckSquare,
+  Sunset,
+  Sparkles,
+  CalendarCheck,
+  ClipboardCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -993,7 +998,7 @@ export default function WeeklyTaskManager() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [showDiagnostic, setShowDiagnostic] = useState(!isSupabaseConfigured())
   const [collapsedColumns, setCollapsedColumns] = useState<{ [key: string]: boolean }>({})
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
@@ -1388,36 +1393,43 @@ export default function WeeklyTaskManager() {
             </Button>
           </div>
 
-          {!sidebarCollapsed && (
-            <div className="mt-8">
+          {/* Daily rituals section - visible in both collapsed and expanded states */}
+          <div className={`${sidebarCollapsed ? 'mt-6' : 'mt-8'}`}>
+            {!sidebarCollapsed && (
               <h3 className="text-xs font-semibold text-slate-400 mb-2">DAILY RITUALS</h3>
-              <div className="space-y-1">
-                <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                  Daily planning
-                </Button>
-                <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                  Daily shutdown
-                </Button>
-                <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                  Daily highlights
-                </Button>
-              </div>
+            )}
+            <div className="space-y-1">
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <CheckSquare className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Daily objectives'}
+              </Button>
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <Sunset className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Daily shutdown'}
+              </Button>
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <Sparkles className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Daily rituals'}
+              </Button>
             </div>
-          )}
+          </div>
 
-          {!sidebarCollapsed && (
-            <div className="mt-4">
+          {/* Weekly rituals section - visible in both collapsed and expanded states */}
+          <div className={`${sidebarCollapsed ? 'mt-6' : 'mt-4'}`}>
+            {!sidebarCollapsed && (
               <h3 className="text-xs font-semibold text-slate-400 mb-2">WEEKLY RITUALS</h3>
-              <div className="space-y-1">
-                <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                  Weekly planning
-                </Button>
-                <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                  Weekly review
-                </Button>
-              </div>
+            )}
+            <div className="space-y-1">
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <CalendarCheck className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Weekly planning'}
+              </Button>
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <ClipboardCheck className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Weekly review'}
+              </Button>
             </div>
-          )}
+          </div>
 
           {!sidebarCollapsed ? (
             <div className="mt-4">
