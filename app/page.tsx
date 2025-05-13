@@ -23,6 +23,11 @@ import {
   CheckCircle,
   CornerDownRight,
   AlertCircle,
+  CheckSquare,
+  Sunset,
+  Sparkles,
+  CalendarCheck,
+  ClipboardCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -514,8 +519,8 @@ function CategoryColumn({
     <div
       ref={drop as unknown as React.RefObject<HTMLDivElement>}
       className={cn(
-        "flex flex-col h-full transition-all duration-300 ease-in-out",
-        isCollapsed ? "min-w-[50px] max-w-[50px]" : "min-w-[450px] flex-1 p-4",
+        "flex flex-col h-full transition-all duration-300 ease-in-out overflow-hidden",
+        isCollapsed ? "min-w-[50px] max-w-[50px]" : "min-w-[420px] flex-1 p-4",
         isOver && !isPastDay && "bg-slate-800",
       )}
     >
@@ -786,30 +791,9 @@ function CategoryColumn({
 </div>
         </>
       ) : (
-        <div className="flex flex-col overflow-y-auto flex-1 space-y-1">
-          {/* Compact tasks for collapsed view */}
-          {sortedTasks.map((task, index) => {
-            // Create a unique key for each task - adding a suffix based on whether it's shown
-            // due to its startDate or completionDate
-            const isCompletedTask = task.completed && task.completionDate === format(day.date, "MMM d");
-            const keyId = isCompletedTask && task.startDate !== format(day.date, "MMM d") 
-              ? `${task.id}-completed` 
-              : task.id;
-            
-            return (
-              <CompactTask
-                key={keyId}
-                task={task}
-                dayIndex={dayIndex}
-                columnType={columnType}
-                index={index}
-                onTaskClick={() => onTaskClick(task.id)}
-                onToggleCompletion={() => onToggleCompletion(task.id)}
-                moveTask={moveTask}
-                isPastDay={isPastDay}
-              />
-            );
-          })}
+        // Show nothing in collapsed view except the header button which is already outside this conditional
+        <div className="hidden">
+          {/* Tasks are completely hidden when column is collapsed */}
         </div>
       )}
     </div>
@@ -878,7 +862,7 @@ function DayColumn({
   const isWorkCollapsed = collapsedColumns[`${dayIndex}-work`] || false
 
   // Calculate day column width based on collapsed state
-  const dayWidth = (isPersonalCollapsed ? 50 : 450) + (isWorkCollapsed ? 50 : 450)
+  const dayWidth = (isPersonalCollapsed ? 50 : 420) + (isWorkCollapsed ? 50 : 420)
 
   return (
     <div
@@ -1012,9 +996,10 @@ export default function WeeklyTaskManager() {
   const [showNewTaskInputs, setShowNewTaskInputs] = useState<{ [key: string]: boolean }>({})
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const [collapsedColumns, setCollapsedColumns] = useState<{ [key: string]: boolean }>({})
   const [showDiagnostic, setShowDiagnostic] = useState(!isSupabaseConfigured())
+  const [collapsedColumns, setCollapsedColumns] = useState<{ [key: string]: boolean }>({})
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
   const moveTask = useCallback((
@@ -1380,95 +1365,142 @@ export default function WeeklyTaskManager() {
     <DndProvider backend={HTML5Backend}>
       <div className="flex h-screen bg-[#0a0e1a] text-slate-100">
         {/* Sidebar */}
-        <div className="w-[180px] border-r border-slate-700 p-4 flex flex-col bg-slate-800">
+        <div className={`${sidebarCollapsed ? 'w-[50px]' : 'w-[180px]'} border-r border-slate-700 p-4 flex flex-col bg-slate-800 transition-all duration-300 ease-in-out`}>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="font-semibold text-lg">TaskMaster</h2>
-            <ChevronDown className="h-4 w-4 text-slate-400" />
+            {!sidebarCollapsed && <h2 className="font-semibold text-lg">TaskMaster</h2>}
+            <button 
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className={`${sidebarCollapsed ? 'mx-auto' : ''} text-slate-400 hover:text-slate-100 transition-colors`}
+            >
+              {sidebarCollapsed ? 
+                <ChevronRight className="h-4 w-4" /> : 
+                <ChevronLeft className="h-4 w-4" />}
+            </button>
           </div>
 
           <div className="space-y-1">
-            <Button variant="ghost" className="w-full justify-start text-slate-200">
-              <Home className="mr-2 h-4 w-4" />
-              Home
+            <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-slate-200`}>
+              <Home className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+              {!sidebarCollapsed && 'Home'}
             </Button>
-            <Button variant="ghost" className="w-full justify-start bg-slate-700 text-slate-100">
-              <Calendar className="mr-2 h-4 w-4" />
-              Today
+            <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} bg-slate-700 text-slate-100`}>
+              <Calendar className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+              {!sidebarCollapsed && 'Today'}
             </Button>
-            <Button variant="ghost" className="w-full justify-start text-slate-200">
-              <Target className="mr-2 h-4 w-4" />
-              Focus
+            <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-slate-200`}>
+              <Target className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+              {!sidebarCollapsed && 'Focus'}
             </Button>
           </div>
 
-          <div className="mt-8">
-            <h3 className="text-xs font-semibold text-slate-400 mb-2">DAILY RITUALS</h3>
+          {/* Daily rituals section - visible in both collapsed and expanded states */}
+          <div className={`${sidebarCollapsed ? 'mt-6' : 'mt-8'}`}>
+            {!sidebarCollapsed && (
+              <h3 className="text-xs font-semibold text-slate-400 mb-2">DAILY RITUALS</h3>
+            )}
             <div className="space-y-1">
-              <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                Daily planning
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <CheckSquare className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Daily objectives'}
               </Button>
-              <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                Daily shutdown
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <Sunset className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Daily shutdown'}
               </Button>
-              <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                Daily highlights
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <Sparkles className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Daily rituals'}
               </Button>
             </div>
           </div>
 
-          <div className="mt-4">
-            <h3 className="text-xs font-semibold text-slate-400 mb-2">WEEKLY RITUALS</h3>
+          {/* Weekly rituals section - visible in both collapsed and expanded states */}
+          <div className={`${sidebarCollapsed ? 'mt-6' : 'mt-4'}`}>
+            {!sidebarCollapsed && (
+              <h3 className="text-xs font-semibold text-slate-400 mb-2">WEEKLY RITUALS</h3>
+            )}
             <div className="space-y-1">
-              <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                Weekly planning
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <CalendarCheck className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Weekly planning'}
               </Button>
-              <Button variant="ghost" className="w-full justify-start text-sm text-slate-200">
-                Weekly review
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
+                <ClipboardCheck className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                {!sidebarCollapsed && 'Weekly review'}
               </Button>
             </div>
           </div>
 
-          <div className="mt-4">
-            <h3 className="text-xs font-semibold text-slate-400 mb-2">COLUMN CONTROLS</h3>
-            <div className="space-y-1">
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-sm text-slate-200"
+          {!sidebarCollapsed ? (
+            <div className="mt-4">
+              <h3 className="text-xs font-semibold text-slate-400 mb-2">COLUMN CONTROLS</h3>
+              <div className="space-y-1">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm text-slate-200"
+                  onClick={() => collapseAllColumnsOfType("personal")}
+                >
+                  <Minimize2 className="mr-2 h-4 w-4" />
+                  Collapse Personal
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm text-slate-200"
+                  onClick={() => expandAllColumnsOfType("personal")}
+                >
+                  <Maximize2 className="mr-2 h-4 w-4" />
+                  Expand Personal
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm text-slate-200"
+                  onClick={() => collapseAllColumnsOfType("work")}
+                >
+                  <Minimize2 className="mr-2 h-4 w-4" />
+                  Collapse Work
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm text-slate-200"
+                  onClick={() => expandAllColumnsOfType("work")}
+                >
+                  <Maximize2 className="mr-2 h-4 w-4" />
+                  Expand Work
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-col items-center space-y-2">
+              <button 
                 onClick={() => collapseAllColumnsOfType("personal")}
+                className="text-slate-400 hover:text-slate-100 p-1"
               >
-                <Minimize2 className="mr-2 h-4 w-4" />
-                Collapse Personal
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-sm text-slate-200"
+                <Minimize2 className="h-4 w-4" />
+              </button>
+              <button
                 onClick={() => expandAllColumnsOfType("personal")}
+                className="text-slate-400 hover:text-slate-100 p-1"
               >
-                <Maximize2 className="mr-2 h-4 w-4" />
-                Expand Personal
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-sm text-slate-200"
+                <Maximize2 className="h-4 w-4" />
+              </button>
+              <button
                 onClick={() => collapseAllColumnsOfType("work")}
+                className="text-slate-400 hover:text-slate-100 p-1"
               >
-                <Minimize2 className="mr-2 h-4 w-4" />
-                Collapse Work
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-sm text-slate-200"
+                <Minimize2 className="h-4 w-4" />
+              </button>
+              <button
                 onClick={() => expandAllColumnsOfType("work")}
+                className="text-slate-400 hover:text-slate-100 p-1"
               >
-                <Maximize2 className="mr-2 h-4 w-4" />
-                Expand Work
-              </Button>
+                <Maximize2 className="h-4 w-4" />
+              </button>
             </div>
-          </div>
+          )}
 
           <div className="mt-auto space-y-2">
-            {/* Only show Supabase Diagnostic in development environment */}
-            {(process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost') && (
+            {/* Only show diagnostic in development environments and when sidebar is expanded */}
+            {!sidebarCollapsed && (process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost') && (
               <Button
                 variant="outline"
                 className="w-full flex items-center justify-center gap-2 border-slate-600 text-slate-200"
@@ -1478,11 +1510,13 @@ export default function WeeklyTaskManager() {
                 Supabase Diagnostic
               </Button>
             )}
+            
+            {/* User profile section */}
             <div
-              className="flex items-center p-2 rounded-lg bg-slate-700 cursor-pointer hover:bg-slate-600"
+              className={`flex items-center ${sidebarCollapsed ? 'justify-center' : ''} p-2 rounded-lg bg-slate-700 cursor-pointer hover:bg-slate-600`}
               onClick={() => router.push("/profile")}
             >
-              <Avatar className="h-8 w-8 mr-2 bg-blue-600">
+              <Avatar className={`h-8 w-8 ${sidebarCollapsed ? '' : 'mr-2'} bg-blue-600`}>
                 <AvatarFallback>
                   {user?.user_metadata?.name
                     ? user.user_metadata.name
@@ -1494,16 +1528,24 @@ export default function WeeklyTaskManager() {
                     : user?.email?.substring(0, 2).toUpperCase() || "U"}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-slate-100">
-                  {user?.user_metadata?.name || user?.email?.split("@")[0] || "User"}
-                </p>
-                <p className="text-xs text-slate-400 truncate">{user?.email}</p>
-              </div>
+              {!sidebarCollapsed && (
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-100">
+                    {user?.user_metadata?.name || user?.email?.split("@")[0] || "User"}
+                  </p>
+                  <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+                </div>
+              )}
             </div>
-            <Button variant="outline" className="w-full border-slate-600 text-slate-200" onClick={() => signOut()}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign out
+            
+            {/* Sign out button */}
+            <Button 
+              variant="outline" 
+              className={`${sidebarCollapsed ? 'p-2 h-auto aspect-square' : 'w-full'} border-slate-600 text-slate-200 flex items-center justify-center`} 
+              onClick={() => signOut()}
+            >
+              <LogOut className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+              {!sidebarCollapsed && 'Sign out'}
             </Button>
           </div>
         </div>
