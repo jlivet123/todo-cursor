@@ -22,6 +22,7 @@ import {
   Circle,
   CheckCircle,
   CornerDownRight,
+  ClipboardList,
   AlertCircle,
   CheckSquare,
   Sunset,
@@ -41,6 +42,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Skeleton } from "@/components/ui/skeleton"
 import { resetToSampleData } from "@/lib/storage"
 import type { Task } from "@/lib/storage"
+import Link from "next/link"
 import { SupabaseDiagnostic } from "@/components/supabase-diagnostic"
 import { isSupabaseConfigured } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -999,6 +1001,12 @@ export default function WeeklyTaskManager() {
   const [showDiagnostic, setShowDiagnostic] = useState(!isSupabaseConfigured())
   const [collapsedColumns, setCollapsedColumns] = useState<{ [key: string]: boolean }>({})
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  
+  // Responsive view state
+  const [isMobileView, setIsMobileView] = useState<boolean>(false)
+  const [activeDayIndex, setActiveDayIndex] = useState<number>(0)
+  const [activeColumnType, setActiveColumnType] = useState<'personal' | 'work'>('personal')
+  
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
@@ -1039,6 +1047,32 @@ export default function WeeklyTaskManager() {
       setShowNewTaskInputs(initialShowNewTaskInputs)
     }
   }, [days.length])
+  
+  // Responsive layout detection
+  useEffect(() => {
+    const checkMobileView = () => {
+      setIsMobileView(window.innerWidth < 1024) // Consider tablets and phones as mobile view
+    }
+    
+    // Set initial state
+    checkMobileView()
+    
+    // Add event listener for window resize
+    window.addEventListener('resize', checkMobileView)
+    
+    // Clean up event listener
+    return () => window.removeEventListener('resize', checkMobileView)
+  }, [])
+  
+  // Set initial active day only once when component mounts
+  useEffect(() => {
+    if (days.length > 0) {
+      const todayIndex = findTodayIndex()
+      if (todayIndex !== null) {
+        setActiveDayIndex(todayIndex)
+      }
+    }
+  }, []) // Empty dependency array so it only runs once
 
   // No need to scroll to today when the app loads since today is already the first day
 
@@ -1313,6 +1347,29 @@ export default function WeeklyTaskManager() {
       })
     }
   }
+  
+  // Mobile navigation functions with debugging
+  const goToNextDay = () => {
+    if (activeDayIndex < days.length - 1) {
+      const newIndex = activeDayIndex + 1
+      console.log(`Navigation: Moving from day ${activeDayIndex} to day ${newIndex}`)
+      setActiveDayIndex(newIndex)
+    }
+  }
+  
+  const goToPreviousDay = () => {
+    if (activeDayIndex > 0) {
+      const newIndex = activeDayIndex - 1
+      console.log(`Navigation: Moving from day ${activeDayIndex} to day ${newIndex}`)
+      setActiveDayIndex(newIndex)
+    }
+  }
+  
+  const toggleColumnType = () => {
+    const newType = activeColumnType === 'personal' ? 'work' : 'personal'
+    console.log(`Navigation: Switching column from ${activeColumnType} to ${newType}`)
+    setActiveColumnType(newType)
+  }
 
   const toggleColumnCollapse = (dayIndex: number, columnType: "personal" | "work") => {
     const key = `${dayIndex}-${columnType}`
@@ -1399,6 +1456,12 @@ export default function WeeklyTaskManager() {
               <h3 className="text-xs font-semibold text-slate-400 mb-2">DAILY RITUALS</h3>
             )}
             <div className="space-y-1">
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`} asChild>
+                <Link href="/decision-matrix">
+                  <ClipboardList className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                  {!sidebarCollapsed && 'Decision Matrix'}
+                </Link>
+              </Button>
               <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
                 <CheckSquare className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
                 {!sidebarCollapsed && 'Daily objectives'}
@@ -1557,63 +1620,143 @@ export default function WeeklyTaskManager() {
               <Button variant="outline" size="sm" onClick={scrollToToday} className="border-slate-600 text-slate-200">
                 Today
               </Button>
-              <Button variant="outline" size="sm" className="border-slate-600 text-slate-200">
-                Filter
+              <Button variant="outline" size="sm" onClick={() => loadMoreDays("future")} className="border-slate-600 text-slate-200">
+                Load More Days
               </Button>
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => loadMoreDays("past")}
+                onClick={handleResetToSampleData}
                 className="border-slate-600 text-slate-200"
               >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Load Past Days
+                Reset Data
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => loadMoreDays("future")}
+                onClick={() => signOut()}
                 className="border-slate-600 text-slate-200"
               >
-                Load More Future
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-              <Button variant="outline" size="sm" className="border-slate-600 text-slate-200">
-                <LayoutGrid className="h-4 w-4 mr-2" />
-                Board
+                Sign Out
               </Button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-hidden">
-            <div ref={scrollContainerRef} className="flex overflow-x-auto h-full">
-              {days.map((day, dayIndex) => (
-                <DayColumn
-                  key={dayIndex}
-                  day={day}
-                  dayIndex={dayIndex}
-                  tasks={day.tasks}
-                  onTaskClick={(taskId) => openTaskModal(dayIndex, taskId)}
-                  onToggleCompletion={(taskId) => toggleTaskCompletion(dayIndex, taskId)}
-                  onToggleSubtaskCompletion={(taskId, subtaskId) =>
-                    toggleSubtaskCompletion(dayIndex, taskId, subtaskId)
-                  }
-                  moveTask={moveTask}
-                  showNewTaskInputs={showNewTaskInputs}
-                  newTaskTexts={newTaskTexts}
-                  onNewTaskTextChange={(columnType, text) => handleNewTaskTextChange(dayIndex, columnType, text)}
-                  onToggleNewTaskInput={(columnType) => toggleNewTaskInput(dayIndex, columnType)}
-                  onAddNewTask={(columnType) => addNewTask(dayIndex, columnType)}
-                  isLoading={isLoading}
-                  onTaskCategoryChange={handleTaskCategoryChange}
-                  onKeyDown={handleKeyDown}
-                  collapsedColumns={collapsedColumns}
-                  onToggleColumnCollapse={toggleColumnCollapse}
-                />
-              ))}
-            </div>
+          {/* Tasks view */}
+          <div
+            className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-800 p-4"
+            ref={scrollContainerRef}
+          >
+            {/* Mobile View */}
+            {isMobileView && days.length > 0 && (
+              <div className="flex flex-col w-full">
+                {/* Navigation Header */}
+                <div className="flex justify-between items-center mb-4">
+                  <button 
+                    onClick={goToPreviousDay} 
+                    disabled={activeDayIndex === 0}
+                    className={`p-2 rounded-md ${activeDayIndex === 0 ? 'bg-gray-600 text-gray-400' : 'bg-blue-600 text-white'}`}
+                    aria-label="Previous day"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  
+                  <h2 className="text-xl font-semibold">
+                    {days[activeDayIndex]?.date && format(days[activeDayIndex].date, 'EEEE, MMM d')}
+                    <span className="ml-2 text-sm opacity-70">(Day {activeDayIndex + 1} of {days.length})</span>
+                  </h2>
+                  
+                  <button 
+                    onClick={goToNextDay} 
+                    disabled={activeDayIndex === days.length - 1}
+                    className={`p-2 rounded-md ${activeDayIndex === days.length - 1 ? 'bg-gray-600 text-gray-400' : 'bg-blue-600 text-white'}`}
+                    aria-label="Next day"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+                
+                {/* Column Type Switcher */}
+                <div className="flex justify-center mb-4">
+                  <button 
+                    onClick={toggleColumnType}
+                    className="px-4 py-2 rounded-md bg-purple-600 text-white flex items-center gap-2"
+                  >
+                    Switch to {activeColumnType === 'personal' ? 'Work' : 'Personal'}
+                    <RefreshCw size={16} />
+                  </button>
+                </div>
+                
+                {/* Current Day Column with debug information */}
+                {(() => {
+                  // Using IIFE to enable local variables for debugging
+                  const currentDay = days[activeDayIndex];
+                  const dateKey = currentDay?.date ? format(currentDay.date, "yyyy-MM-dd") : '';
+                  const taskCount = currentDay?.tasks.filter(t => t.category === activeColumnType).length || 0;
+                  
+                  console.log(`Rendering mobile view for day index: ${activeDayIndex}, date: ${dateKey}, ${activeColumnType} tasks: ${taskCount}`);
+                  
+                  return currentDay && (
+                    <div className="w-full h-full">
+                      <CategoryColumn
+                        title={activeColumnType === 'personal' ? 'Personal' : 'Work'}
+                        columnType={activeColumnType}
+                        day={currentDay}
+                        dayIndex={activeDayIndex}
+                        tasks={currentDay.tasks.filter(task => task.category === activeColumnType)}
+                        onTaskClick={(taskId) => openTaskModal(activeDayIndex, taskId)}
+                        onToggleCompletion={(taskId) => toggleTaskCompletion(activeDayIndex, taskId)}
+                        onToggleSubtaskCompletion={(taskId, subtaskId) => toggleSubtaskCompletion(activeDayIndex, taskId, subtaskId)}
+                        moveTask={moveTask}
+                        showNewTaskInput={showNewTaskInputs[`${dateKey}-${activeColumnType}`] || false}
+                        newTaskText={newTaskTexts[`${dateKey}-${activeColumnType}`] || ''}
+                        onNewTaskTextChange={(text) => handleNewTaskTextChange(activeDayIndex, activeColumnType, text)}
+                        onToggleNewTaskInput={() => toggleNewTaskInput(activeDayIndex, activeColumnType)}
+                        onAddNewTask={() => addNewTask(activeDayIndex, activeColumnType)}
+                        isLoading={isLoading}
+                        borderColor={activeColumnType === 'personal' ? 'border-blue-500' : 'border-green-500'}
+                        onTaskCategoryChange={handleTaskCategoryChange}
+                        isPastDay={currentDay.isPast}
+                        onKeyDown={(_, columnType, e) => handleKeyDown(activeDayIndex, columnType, e)}
+                        isCollapsed={false}
+                        onToggleCollapse={() => {}}
+                      />
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            
+            {/* Desktop View */}
+            {!isMobileView && (
+              <div className="flex gap-4">
+                {days.map((day, dayIndex) => (
+                  <DayColumn
+                    key={`day-${dayIndex}`}
+                    day={day}
+                    dayIndex={dayIndex}
+                    tasks={day.tasks}
+                    onTaskClick={(taskId) => openTaskModal(dayIndex, taskId)}
+                    onToggleCompletion={(taskId) => toggleTaskCompletion(dayIndex, taskId)}
+                    onToggleSubtaskCompletion={(taskId, subtaskId) => toggleSubtaskCompletion(dayIndex, taskId, subtaskId)}
+                    moveTask={moveTask}
+                    showNewTaskInputs={showNewTaskInputs}
+                    newTaskTexts={newTaskTexts}
+                    onNewTaskTextChange={(columnType, text) => handleNewTaskTextChange(dayIndex, columnType, text)}
+                    onToggleNewTaskInput={(columnType) => toggleNewTaskInput(dayIndex, columnType)}
+                    onAddNewTask={(columnType) => addNewTask(dayIndex, columnType)}
+                    isLoading={isLoading}
+                    onTaskCategoryChange={handleTaskCategoryChange}
+                    onKeyDown={(dayIndex, columnType, e) => handleKeyDown(dayIndex, columnType, e)}
+                    collapsedColumns={collapsedColumns}
+                    onToggleColumnCollapse={(dayIndex, columnType) => toggleColumnCollapse(dayIndex, columnType)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1624,11 +1767,7 @@ export default function WeeklyTaskManager() {
           onClose={closeTaskModal}
           onSave={saveTaskChanges}
           onDelete={handleDeleteTask}
-          isPastDay={
-            selectedTask
-              ? days.find((day) => day.tasks.some((task) => task.id === selectedTask.id))?.isPast || false
-              : false
-          }
+          isPastDay={selectedTask ? days.find((day) => day.tasks.some((task) => task.id === selectedTask.id))?.isPast : false}
         />
       </div>
     </DndProvider>

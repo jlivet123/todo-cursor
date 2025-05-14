@@ -27,6 +27,14 @@ export interface Task {
   completionDateObj?: Date | null
 }
 
+export interface DecisionMatrixEntry {
+  id: string
+  limitingBelief: string
+  empoweredDecision: string
+  evidence: string
+  createdAt: string
+}
+
 // Mock user for local storage
 export const MOCK_USER = {
   id: "local-user",
@@ -38,6 +46,8 @@ export const MOCK_USER = {
 const TASKS_STORAGE_KEY = "taskmaster_tasks"
 const USER_STORAGE_KEY = "taskmaster_user"
 const INITIALIZED_KEY = "taskmaster_initialized"
+const DECISION_MATRIX_STORAGE_KEY = "taskmaster_decision_matrix"
+
 
 // Helper function to check if we're in a browser environment
 const isBrowser = () => typeof window !== "undefined"
@@ -457,7 +467,220 @@ export function clearUser(): void {
 }
 
 export function saveUser(user: any): void {
-  if (!isSupabaseConfigured() && isBrowser()) {
+  if (!isBrowser()) return
+
+  if (user) {
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
+  }
+}
+
+// Decision Matrix related functionality
+export interface DecisionMatrixEntry {
+  id: string
+  limitingBelief: string
+  empoweredDecision: string
+  evidence: string
+  createdAt: string
+  // Only used for Supabase entries
+  user_id?: string
+  updated_at?: string
+}
+
+// Supabase table name for the decision matrix
+const DECISION_MATRIX_TABLE = 'decision_matrix'
+
+/**
+ * Get the current authenticated user from Supabase
+ * @returns Promise that resolves to the current user or null if not authenticated
+ */
+async function getCurrentUser() {
+  if (!isSupabaseConfigured()) return null
+  
+  const supabase = getSupabaseClient()
+  if (!supabase) return null
+  
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    return user
+  } catch (error) {
+    console.error('Error getting current user:', error)
+    return null
+  }
+}
+
+/**
+ * Get decision matrix entries from Supabase or localStorage fallback
+ * @returns Promise that resolves to an array of DecisionMatrixEntry objects
+ */
+export async function getDecisionMatrix(): Promise<DecisionMatrixEntry[]> {
+  // Try to get from Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = getSupabaseClient()
+      if (!supabase) return getDecisionMatrixFromLocalStorage()
+      
+      const user = await getCurrentUser()
+      
+      if (!user) {
+        console.warn('No user found, cannot fetch decision matrix entries from Supabase')
+        return getDecisionMatrixFromLocalStorage()
+      }
+      
+      const { data, error } = await supabase
+        .from(DECISION_MATRIX_TABLE)
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (error) {
+        console.error('Error fetching decision matrix from Supabase:', error)
+        return getDecisionMatrixFromLocalStorage()
+      }
+      
+      // Map Supabase data to match our interface
+      return data.map((entry) => ({
+        id: entry.id,
+        limitingBelief: entry.limiting_belief,
+        empoweredDecision: entry.empowered_decision,
+        evidence: entry.evidence,
+        createdAt: entry.created_at,
+        user_id: entry.user_id,
+        updated_at: entry.updated_at,
+      }))
+    } catch (error) {
+      console.error('Error in getDecisionMatrix:', error)
+      return getDecisionMatrixFromLocalStorage()
+    }
+  }
+  
+  // Fallback to localStorage if Supabase is not configured
+  return getDecisionMatrixFromLocalStorage()
+}
+
+/**
+ * Save decision matrix entries to Supabase or localStorage fallback
+ * @param entries Array of DecisionMatrixEntry objects
+ * @returns Promise that resolves when the operation is complete
+ */
+export async function saveDecisionMatrix(entries: DecisionMatrixEntry[]): Promise<void> {
+  // Try to save to Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = getSupabaseClient()
+      if (!supabase) {
+        saveDecisionMatrixToLocalStorage(entries)
+        return
+      }
+      
+      const user = await getCurrentUser()
+      
+      if (!user) {
+        console.warn('No user found, cannot save decision matrix entries to Supabase')
+        saveDecisionMatrixToLocalStorage(entries)
+        return
+      }
+
+      // We don't do a bulk upsert here since we need to handle deletes
+      // Get current entries in Supabase
+      const { data: existingEntries, error: fetchError } = await supabase
+        .from(DECISION_MATRIX_TABLE)
+        .select('id')
+      
+      if (fetchError) {
+        console.error('Error fetching existing entries:', fetchError)
+        saveDecisionMatrixToLocalStorage(entries)
+        return
+      }
+      
+      // Find entries to delete (in existingEntries but not in entries)
+      const existingIds = existingEntries?.map(e => e.id) || []
+      const currentIds = entries.map(e => e.id)
+      const idsToDelete = existingIds.filter(id => !currentIds.includes(id))
+      
+      // Delete entries that no longer exist in the current set
+      if (idsToDelete.length > 0) {
+        const { error: deleteError } = await supabase
+          .from(DECISION_MATRIX_TABLE)
+          .delete()
+          .in('id', idsToDelete)
+        
+        if (deleteError) {
+          console.error('Error deleting entries:', deleteError)
+        }
+      }
+      
+      // Upsert each entry
+      for (const entry of entries) {
+        const { error: upsertError } = await supabase
+          .from(DECISION_MATRIX_TABLE)
+          .upsert({
+            id: entry.id,
+            user_id: user.id,
+            limiting_belief: entry.limitingBelief,
+            empowered_decision: entry.empoweredDecision,
+            evidence: entry.evidence,
+            created_at: entry.createdAt,
+            updated_at: new Date().toISOString(),
+          })
+        
+        if (upsertError) {
+          console.error('Error upserting entry:', upsertError)
+        }
+      }
+    } catch (error) {
+      console.error('Error in saveDecisionMatrix:', error)
+      saveDecisionMatrixToLocalStorage(entries)
+    }
+    return
+  }
+  
+  // Fallback to localStorage if Supabase is not configured
+  saveDecisionMatrixToLocalStorage(entries)
+}
+
+/**
+ * Delete a single decision matrix entry from Supabase
+ * @param id ID of the entry to delete
+ * @returns Promise that resolves when the operation is complete
+ */
+export async function deleteDecisionMatrixEntry(id: string): Promise<void> {
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = getSupabaseClient()
+      if (!supabase) return
+      
+      const { error } = await supabase
+        .from(DECISION_MATRIX_TABLE)
+        .delete()
+        .eq('id', id)
+      
+      if (error) {
+        console.error('Error deleting entry from Supabase:', error)
+      }
+    } catch (error) {
+      console.error('Error in deleteDecisionMatrixEntry:', error)
+    }
+  }
+}
+
+// Helper functions for localStorage fallback
+function getDecisionMatrixFromLocalStorage(): DecisionMatrixEntry[] {
+  if (!isBrowser()) return []
+
+  try {
+    const matrixJson = localStorage.getItem(DECISION_MATRIX_STORAGE_KEY)
+    return matrixJson ? JSON.parse(matrixJson) : []
+  } catch (error) {
+    console.error("Error getting decision matrix from localStorage:", error)
+    return []
+  }
+}
+
+function saveDecisionMatrixToLocalStorage(entries: DecisionMatrixEntry[]): void {
+  if (!isBrowser()) return
+
+  try {
+    localStorage.setItem(DECISION_MATRIX_STORAGE_KEY, JSON.stringify(entries))
+  } catch (error) {
+    console.error("Error saving decision matrix to localStorage:", error)
   }
 }
