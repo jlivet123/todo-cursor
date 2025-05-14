@@ -7,8 +7,12 @@ import { PlusIcon, PencilIcon, TrashIcon } from "lucide-react"
 import { type DecisionMatrixEntry, getDecisionMatrix, saveDecisionMatrix } from "@/lib/storage"
 import { DecisionMatrixModal } from "@/components/decision-matrix-modal"
 import { HelperText } from "@/components/helper-text"
+import { Sidebar } from "@/components/sidebar"
+import { useAuth } from "@/lib/auth-context"
+import Link from "next/link"
 
 export default function DecisionMatrixPage() {
+  const { user, status } = useAuth()
   const [entries, setEntries] = useState<DecisionMatrixEntry[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentEntry, setCurrentEntry] = useState<DecisionMatrixEntry | undefined>(undefined)
@@ -60,7 +64,7 @@ export default function DecisionMatrixPage() {
     setIsModalOpen(false)
   }
 
-  // Update the helperContent variable with the new content
+  // Helper content for the Decision Matrix explanation
   const helperContent = (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">The Decision Matrix: Rewire Your Limiting Beliefs</h2>
@@ -122,114 +126,97 @@ export default function DecisionMatrixPage() {
         </ul>
         <p className="mt-2">Think of this as choosing a belief that will move you into a powerful emotional state.</p>
       </div>
-
-      <div>
-        <h4 className="font-medium">Step 3: Gather Evidence</h4>
-        <p>Ask yourself:</p>
-        <p className="mt-1 italic">"What real evidence do I have that this new decision is true?"</p>
-        <p className="mt-1">
-          Then write down 3–7 examples from your own life—memories, moments, or proof—that support the new belief.
-        </p>
-        <p className="mt-1">Examples:</p>
-        <ul className="list-disc pl-5 mt-1 space-y-1">
-          <li>"I got a surprise bonus last year"</li>
-          <li>"My friend Jen has always been trustworthy"</li>
-          <li>"I completed a hard project and got great feedback"</li>
-        </ul>
-        <p className="mt-2">
-          You're training your brain to see and reinforce the new belief using its own memory system.
-        </p>
-      </div>
-
-      <div>
-        <h3 className="text-lg font-medium mb-2">🔄 How It Rewires Your Brain</h3>
-        <p>
-          Your brain is like a search engine. Ask it the right question ("What evidence do I have?"), and it will return
-          powerful results.
-        </p>
-        <p className="mt-2">
-          By retrieving real memories, you reactivate neural pathways tied to positive belief structures.
-        </p>
-        <p className="mt-2">
-          Over time, this reduces the emotional charge of the old belief and strengthens the new one.
-        </p>
-      </div>
-
-      <div>
-        <h3 className="text-lg font-medium mb-2">🧘‍♀️ Helpful Tips</h3>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>Don't worry if your evidence seems small—small truths compound.</li>
-          <li>Revisit your matrix daily or weekly to reinforce your new decisions.</li>
-          <li>
-            If the old belief creeps back in, simply remind yourself: <span className="italic">"It's not true."</span>
-          </li>
-        </ul>
-      </div>
     </div>
   )
 
+  // Loading state
+  if (status === "loading") {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+  }
+
+  // Not logged in state
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold">Please sign in to access the Decision Matrix</h1>
+          <Button asChild>
+            <Link href="/">Go to Login</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Main content
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="flex items-center mb-6">
-        <h1 className="text-2xl font-bold">The Decision Matrix</h1>
-        <div className="ml-2">
-          <HelperText title="About The Decision Matrix" content={helperContent} />
-        </div>
+    <div className="flex min-h-screen bg-slate-900 text-slate-50">
+      <Sidebar />
+      
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 overflow-auto p-6">
+          <div className="container mx-auto">
+            <div className="mb-8 space-y-4">
+              <h1 className="text-2xl font-bold">The Decision Matrix</h1>
+              <HelperText title="About the Decision Matrix" content={helperContent} />
+            </div>
+
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Your Entries</h2>
+              <Button onClick={handleAddEntry} className="flex items-center gap-1">
+                <PlusIcon className="h-4 w-4" /> Add Entry
+              </Button>
+            </div>
+
+            {isLoading ? (
+              <div className="text-center py-8">Loading...</div>
+            ) : entries.length === 0 ? (
+              <div className="text-center py-8 border border-slate-700 rounded-lg bg-slate-800">
+                <p className="text-slate-400">No entries yet. Click "Add Entry" to get started.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-slate-800">
+                      <th className="border border-slate-700 p-3 text-left">Limiting Belief</th>
+                      <th className="border border-slate-700 p-3 text-left">New Empowered Decision</th>
+                      <th className="border border-slate-700 p-3 text-left">Evidence from your life</th>
+                      <th className="border border-slate-700 p-3 text-center w-24">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map((entry) => (
+                      <tr key={entry.id} className="border-b border-slate-700 hover:bg-slate-800/50">
+                        <td className="border border-slate-700 p-3 align-top whitespace-pre-wrap">{entry.limitingBelief}</td>
+                        <td className="border border-slate-700 p-3 align-top whitespace-pre-wrap">{entry.empoweredDecision}</td>
+                        <td className="border border-slate-700 p-3 align-top whitespace-pre-wrap">{entry.evidence}</td>
+                        <td className="border border-slate-700 p-3 text-center">
+                          <div className="flex justify-center space-x-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleEditEntry(entry)} title="Edit">
+                              <PencilIcon className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(entry.id)} title="Delete">
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <DecisionMatrixModal
+              entry={currentEntry}
+              onSave={handleSaveEntry}
+              onCancel={() => setIsModalOpen(false)}
+              isOpen={isModalOpen}
+            />
+          </div>
+        </main>
       </div>
-
-      <div className="mb-6">
-        <Button onClick={handleAddEntry}>
-          <PlusIcon className="h-4 w-4 mr-2" />
-          Add New Entry
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="text-center py-8">Loading...</div>
-      ) : entries.length === 0 ? (
-        <div className="text-center py-8 border rounded-lg bg-card">
-          <p className="text-muted-foreground">No entries yet. Click "Add New Entry" to get started.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-muted">
-                <th className="border p-3 text-left">Limiting Belief</th>
-                <th className="border p-3 text-left">New Empowered Decision</th>
-                <th className="border p-3 text-left">Evidence from your life</th>
-                <th className="border p-3 text-center w-24">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => (
-                <tr key={entry.id} className="border-b hover:bg-muted/50">
-                  <td className="border p-3 align-top whitespace-pre-wrap">{entry.limitingBelief}</td>
-                  <td className="border p-3 align-top whitespace-pre-wrap">{entry.empoweredDecision}</td>
-                  <td className="border p-3 align-top whitespace-pre-wrap">{entry.evidence}</td>
-                  <td className="border p-3 text-center">
-                    <div className="flex justify-center space-x-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleEditEntry(entry)} title="Edit">
-                        <PencilIcon className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(entry.id)} title="Delete">
-                        <TrashIcon className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <DecisionMatrixModal
-        entry={currentEntry}
-        onSave={handleSaveEntry}
-        onCancel={() => setIsModalOpen(false)}
-        isOpen={isModalOpen}
-      />
     </div>
   )
 }

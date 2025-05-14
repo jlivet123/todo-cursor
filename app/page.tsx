@@ -1456,10 +1456,10 @@ export default function WeeklyTaskManager() {
               <h3 className="text-xs font-semibold text-slate-400 mb-2">DAILY RITUALS</h3>
             )}
             <div className="space-y-1">
-              <Button variant="ghost" className="w-full justify-start" asChild>
+              <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`} asChild>
                 <Link href="/decision-matrix">
-                  <ClipboardList className="mr-2 h-4 w-4" />
-                  The Decision Matrix
+                  <ClipboardList className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
+                  {!sidebarCollapsed && 'Decision Matrix'}
                 </Link>
               </Button>
               <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
