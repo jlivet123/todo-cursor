@@ -187,11 +187,9 @@ export default function DecisionMatrixPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-auto p-6">
           <div className="container mx-auto">
-            <div className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <h1 className="text-2xl font-bold">The Decision Matrix</h1>
-                <HelperText title="About the Decision Matrix" content={helperContent} />
-              </div>
+            <div className="mb-8 space-y-4">
+              <h1 className="text-2xl font-bold">The Decision Matrix</h1>
+              <HelperText title="About the Decision Matrix" content={helperContent} />
             </div>
 
             <div className="flex justify-between items-center mb-6">
