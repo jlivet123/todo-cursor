@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { v4 as uuidv4 } from "uuid"
 import { Button } from "@/components/ui/button"
 import { PlusIcon, PencilIcon, TrashIcon } from "lucide-react"
-import { type DecisionMatrixEntry, getDecisionMatrix, saveDecisionMatrix } from "@/lib/storage"
+import { type DecisionMatrixEntry, getDecisionMatrix, saveDecisionMatrix, deleteDecisionMatrixEntry } from "@/lib/storage"
 import { DecisionMatrixModal } from "@/components/decision-matrix-modal"
 import { HelperText } from "@/components/helper-text"
 import { Sidebar } from "@/components/sidebar"
@@ -19,10 +19,20 @@ export default function DecisionMatrixPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Load entries from localStorage
-    const loadedEntries = getDecisionMatrix()
-    setEntries(loadedEntries)
-    setIsLoading(false)
+    // Function to load entries from Supabase or localStorage
+    async function loadEntries() {
+      setIsLoading(true)
+      try {
+        const loadedEntries = await getDecisionMatrix()
+        setEntries(loadedEntries)
+      } catch (error) {
+        console.error('Error loading decision matrix entries:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    loadEntries()
   }, [])
 
   const handleAddEntry = () => {
@@ -35,33 +45,54 @@ export default function DecisionMatrixPage() {
     setIsModalOpen(true)
   }
 
-  const handleDeleteEntry = (id: string) => {
+  const handleDeleteEntry = async (id: string) => {
     if (confirm("Are you sure you want to delete this entry?")) {
-      const updatedEntries = entries.filter((entry) => entry.id !== id)
-      setEntries(updatedEntries)
-      saveDecisionMatrix(updatedEntries)
+      try {
+        setIsLoading(true)
+        // Update local state immediately for better UX
+        const updatedEntries = entries.filter((entry) => entry.id !== id)
+        setEntries(updatedEntries)
+        
+        // Update Supabase
+        await deleteDecisionMatrixEntry(id)
+        await saveDecisionMatrix(updatedEntries)
+      } catch (error) {
+        console.error('Error deleting entry:', error)
+      } finally {
+        setIsLoading(false)
+      }
     }
   }
 
-  const handleSaveEntry = (entryData: Omit<DecisionMatrixEntry, "id" | "createdAt">) => {
+  const handleSaveEntry = async (entryData: Omit<DecisionMatrixEntry, "id" | "createdAt">) => {
+    setIsLoading(true)
     let updatedEntries: DecisionMatrixEntry[]
 
-    if (currentEntry) {
-      // Editing existing entry
-      updatedEntries = entries.map((entry) => (entry.id === currentEntry.id ? { ...entry, ...entryData } : entry))
-    } else {
-      // Adding new entry
-      const newEntry: DecisionMatrixEntry = {
-        id: uuidv4(),
-        createdAt: new Date().toISOString(),
-        ...entryData,
+    try {
+      if (currentEntry) {
+        // Editing existing entry
+        updatedEntries = entries.map((entry) => (entry.id === currentEntry.id ? { ...entry, ...entryData } : entry))
+      } else {
+        // Adding new entry
+        const newEntry: DecisionMatrixEntry = {
+          id: uuidv4(),
+          createdAt: new Date().toISOString(),
+          ...entryData,
+        }
+        updatedEntries = [...entries, newEntry]
       }
-      updatedEntries = [...entries, newEntry]
-    }
 
-    setEntries(updatedEntries)
-    saveDecisionMatrix(updatedEntries)
-    setIsModalOpen(false)
+      // Update local state first for better UX
+      setEntries(updatedEntries)
+      setIsModalOpen(false)
+      
+      // Then update Supabase
+      await saveDecisionMatrix(updatedEntries)
+    } catch (error) {
+      console.error('Error saving decision matrix entry:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   // Helper content for the Decision Matrix explanation
@@ -156,9 +187,11 @@ export default function DecisionMatrixPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-auto p-6">
           <div className="container mx-auto">
-            <div className="mb-8 space-y-4">
-              <h1 className="text-2xl font-bold">The Decision Matrix</h1>
-              <HelperText title="About the Decision Matrix" content={helperContent} />
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <h1 className="text-2xl font-bold">The Decision Matrix</h1>
+                <HelperText title="About the Decision Matrix" content={helperContent} />
+              </div>
             </div>
 
             <div className="flex justify-between items-center mb-6">
