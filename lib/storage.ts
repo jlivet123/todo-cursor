@@ -27,6 +27,14 @@ export interface Task {
   completionDateObj?: Date | null
 }
 
+export interface DecisionMatrixEntry {
+  id: string
+  limitingBelief: string
+  empoweredDecision: string
+  evidence: string
+  createdAt: string
+}
+
 // Mock user for local storage
 export const MOCK_USER = {
   id: "local-user",
@@ -38,6 +46,8 @@ export const MOCK_USER = {
 const TASKS_STORAGE_KEY = "taskmaster_tasks"
 const USER_STORAGE_KEY = "taskmaster_user"
 const INITIALIZED_KEY = "taskmaster_initialized"
+const DECISION_MATRIX_STORAGE_KEY = "taskmaster_decision_matrix"
+
 
 // Helper function to check if we're in a browser environment
 const isBrowser = () => typeof window !== "undefined"
@@ -457,7 +467,43 @@ export function clearUser(): void {
 }
 
 export function saveUser(user: any): void {
-  if (!isSupabaseConfigured() && isBrowser()) {
+  if (!isBrowser()) return
+
+  if (user) {
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
+  }
+}
+
+// Decision Matrix related functionality
+export interface DecisionMatrixEntry {
+  id: string
+  limitingBelief: string
+  empoweredDecision: string
+  evidence: string
+  createdAt: string
+}
+
+// Using the DECISION_MATRIX_STORAGE_KEY already declared at the top of the file
+
+// Get decision matrix entries from localStorage
+export function getDecisionMatrix(): DecisionMatrixEntry[] {
+  if (!isBrowser()) return []
+
+  try {
+    const matrixJson = localStorage.getItem(DECISION_MATRIX_STORAGE_KEY)
+    return matrixJson ? JSON.parse(matrixJson) : []
+  } catch (error) {
+    console.error("Error getting decision matrix from localStorage:", error)
+    return []
+  }
+}
+
+export function saveDecisionMatrix(entries: DecisionMatrixEntry[]): void {
+  if (!isBrowser()) return
+
+  try {
+    localStorage.setItem(DECISION_MATRIX_STORAGE_KEY, JSON.stringify(entries))
+  } catch (error) {
+    console.error("Error saving decision matrix to localStorage:", error)
   }
 }

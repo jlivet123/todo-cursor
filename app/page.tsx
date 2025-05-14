@@ -22,6 +22,7 @@ import {
   Circle,
   CheckCircle,
   CornerDownRight,
+  ClipboardList,
   AlertCircle,
   CheckSquare,
   Sunset,
@@ -41,6 +42,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Skeleton } from "@/components/ui/skeleton"
 import { resetToSampleData } from "@/lib/storage"
 import type { Task } from "@/lib/storage"
+import Link from "next/link"
 import { SupabaseDiagnostic } from "@/components/supabase-diagnostic"
 import { isSupabaseConfigured } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -1454,6 +1456,12 @@ export default function WeeklyTaskManager() {
               <h3 className="text-xs font-semibold text-slate-400 mb-2">DAILY RITUALS</h3>
             )}
             <div className="space-y-1">
+              <Button variant="ghost" className="w-full justify-start" asChild>
+                <Link href="/decision-matrix">
+                  <ClipboardList className="mr-2 h-4 w-4" />
+                  The Decision Matrix
+                </Link>
+              </Button>
               <Button variant="ghost" className={`w-full ${sidebarCollapsed ? 'justify-center px-0' : 'justify-start'} text-sm text-slate-200`}>
                 <CheckSquare className={`${sidebarCollapsed ? '' : 'mr-2'} h-4 w-4`} />
                 {!sidebarCollapsed && 'Daily objectives'}
