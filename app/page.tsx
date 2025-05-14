@@ -40,8 +40,8 @@ import { HTML5Backend } from "react-dnd-html5-backend"
 import { useTasks } from "@/lib/hooks/use-tasks"
 import { useAuth } from "@/lib/auth-context"
 import { Skeleton } from "@/components/ui/skeleton"
-import { resetToSampleData } from "@/lib/storage"
-import type { Task } from "@/lib/storage"
+import { getSupabase } from "@/lib/supabase"
+import { Task, Subtask, getTasksFromSupabase, saveTasksToSupabase } from "@/lib/storage"
 import Link from "next/link"
 import { SupabaseDiagnostic } from "@/components/supabase-diagnostic"
 import { isSupabaseConfigured } from "@/lib/supabase"
@@ -50,6 +50,36 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 // Drag item types
 const ITEM_TYPE = "TASK"
+
+// Subtask Item component
+function SubtaskItem({
+  subtask,
+  onToggleCompletion,
+}: {
+  subtask: Subtask
+  onToggleCompletion: () => void
+}) {
+  // Handle checkbox click
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onToggleCompletion()
+  }
+
+  return (
+    <div className="flex items-center py-1 pl-6 hover:bg-slate-800/30 rounded">
+      <div className="flex-shrink-0 cursor-pointer" onClick={handleCheckboxClick}>
+        <div className="w-4 h-4 border border-slate-600 rounded-sm flex items-center justify-center">
+          {subtask.completed && <div className="w-2 h-2 bg-green-500 rounded-sm"></div>}
+        </div>
+      </div>
+      <span
+        className={cn("text-sm ml-2", subtask.completed && "line-through text-slate-400")}
+      >
+        {subtask.text}
+      </span>
+    </div>
+  )
+}
 
 // Draggable Task component
 function DraggableTask({
@@ -177,6 +207,20 @@ function DraggableTask({
     ? task.description.slice(0, 60) + (task.description.length > 60 ? "..." : "")
     : ""
 
+  // Calculate completion status of subtasks
+  const completedSubtasks = task.subtasks ? task.subtasks.filter((st) => st.completed).length : 0
+  const totalSubtasks = task.subtasks ? task.subtasks.length : 0
+  const hasSubtasks = totalSubtasks > 0
+
+  // State for expanding/collapsing subtasks
+  const [isExpanded, setIsExpanded] = useState(true) // Default to expanded
+
+  // Function to toggle expand/collapse state
+  const toggleExpand = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent task modal from opening
+    setIsExpanded(!isExpanded)
+  }
+
   return (
     <div
       ref={dragDropRef as React.RefObject<HTMLDivElement>}
@@ -200,9 +244,25 @@ function DraggableTask({
           </div>
         </div>
         <div className="flex-1 min-w-0">
-          <span className={cn("text-base font-medium break-words whitespace-pre-wrap", task.completed && "line-through text-slate-400")}>
-            {task.text}
-          </span>
+        <div className="flex items-center gap-2">
+            <span
+              className={cn("text-base font-medium truncate block", task.completed && "line-through text-slate-400")}
+            >
+              {task.text}
+            </span>
+            {hasSubtasks && (
+              <button
+                onClick={toggleExpand}
+                className="text-xs text-slate-400 hover:text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded"
+              >
+                {completedSubtasks}/{totalSubtasks}
+                <ChevronDown
+                  className={cn("h-3 w-3 inline-block ml-1 transition-transform", isExpanded && "transform rotate-180")}
+                />
+              </button>
+            )}
+          </div>
+
           {displayDate && (
             <span className="text-xs text-slate-400 mt-1 block">
               {format(new Date(displayDate), "MMM d")}
@@ -230,6 +290,19 @@ function DraggableTask({
           <span className="truncate">{descriptionPreview}</span>
         </div>
       )}
+            {/* Subtasks section */}
+            {hasSubtasks && isExpanded && (
+        <div className="mt-1 border-l border-slate-700 ml-2.5">
+          {task.subtasks.map((subtask) => (
+            <SubtaskItem
+              key={subtask.id}
+              subtask={subtask}
+              onToggleCompletion={() => onToggleSubtaskCompletion(subtask.id)}
+            />
+          ))}
+        </div>
+      )}
+
     </div>
   )
 }
@@ -362,6 +435,12 @@ function CompactTask({
     if (task.category === "personal") return "border-green-500"
     return "border-slate-500"
   }
+
+    // Check if task has subtasks
+    const hasSubtasks = task.subtasks && task.subtasks.length > 0
+    const completedSubtasks = task.subtasks ? task.subtasks.filter((st) => st.completed).length : 0
+    const totalSubtasks = task.subtasks ? task.subtasks.length : 0
+  
 
   return (
     <div
