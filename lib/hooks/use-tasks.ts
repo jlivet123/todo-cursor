@@ -573,11 +573,8 @@ export function useTasks() {
           }))
         })
       }
-        return prevDays.map((day) => ({
-          ...day,
-          tasks: day.tasks.map((task) => (task.id === updatedTask.id ? savedTask : task)),
-        }))
-      })
+      
+      return savedTask;
     } catch (err) {
       console.error("Error updating task:", err)
       throw err
