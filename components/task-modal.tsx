@@ -169,11 +169,26 @@ export function TaskModal({ task, isOpen, onClose, onSave, onDelete, isPastDay =
     // Filter out empty subtasks
     const filteredSubtasks = editedTask.subtasks.filter((subtask) => subtask.text.trim() !== "")
 
+    // Format dates properly
+    const startDate = editedTask.startDateObj 
+      ? {
+          startDate: format(editedTask.startDateObj, "MMM d"),
+          startDateObj: editedTask.startDateObj
+        } 
+      : { startDate: undefined, startDateObj: undefined };
+    
+    const dueDate = editedTask.dueDateObj
+      ? {
+          dueDate: format(editedTask.dueDateObj, "yyyy-MM-dd"), // ISO format for storage
+          dueDateObj: editedTask.dueDateObj
+        }
+      : { dueDate: undefined, dueDateObj: undefined };
+
     const updatedTask = {
       ...editedTask,
       subtasks: filteredSubtasks,
-      startDate: editedTask.startDateObj ? format(editedTask.startDateObj, "MMM d") : undefined,
-      dueDate: editedTask.dueDateObj ? format(editedTask.dueDateObj, "MMM d") : undefined,
+      ...startDate,
+      ...dueDate
     }
 
     onSave(updatedTask)
@@ -185,17 +200,35 @@ export function TaskModal({ task, isOpen, onClose, onSave, onDelete, isPastDay =
       ...editedTask,
       startDateObj: date,
       startDate: date ? format(date, "MMM d") : undefined,
-    })
-    setIsStartDatePickerOpen(false)
+    });
+    setIsStartDatePickerOpen(false);
   }
 
   const handleDueDateSelect = (date: Date | null) => {
     setEditedTask({
       ...editedTask,
       dueDateObj: date,
-      dueDate: date ? format(date, "MMM d") : undefined,
-    })
-    setIsDueDatePickerOpen(false)
+      dueDate: date ? format(date, "yyyy-MM-dd") : undefined,
+    });
+    setIsDueDatePickerOpen(false);
+  }
+
+  const handleDeleteStartDate = () => {
+    setEditedTask({
+      ...editedTask,
+      startDateObj: null,
+      startDate: undefined,
+    });
+    setIsStartDatePickerOpen(false);
+  }
+
+  const handleDeleteDueDate = () => {
+    setEditedTask({
+      ...editedTask,
+      dueDateObj: null,
+      dueDate: undefined,
+    });
+    setIsDueDatePickerOpen(false);
   }
 
   const handleDeleteTask = () => {
@@ -394,23 +427,28 @@ export function TaskModal({ task, isOpen, onClose, onSave, onDelete, isPastDay =
         </div>
       </div>
 
-      {/* Date Picker Modals */}
-      <DatePickerModal
-        isOpen={isStartDatePickerOpen}
-        onClose={() => setIsStartDatePickerOpen(false)}
-        onSelectDate={handleStartDateSelect}
-        selectedDate={editedTask.startDateObj || null}
-        type="start"
-        onDelete={handleDeleteTask}
-      />
+      {/* Date picker modals */}
+      {isStartDatePickerOpen && (
+        <DatePickerModal
+          isOpen={isStartDatePickerOpen}
+          onClose={() => setIsStartDatePickerOpen(false)}
+          onSelectDate={handleStartDateSelect}
+          selectedDate={editedTask.startDateObj || null}
+          type="start"
+          onDelete={handleDeleteStartDate}
+        />
+      )}
 
-      <DatePickerModal
-        isOpen={isDueDatePickerOpen}
-        onClose={() => setIsDueDatePickerOpen(false)}
-        onSelectDate={handleDueDateSelect}
-        selectedDate={editedTask.dueDateObj || null}
-        type="due"
-      />
+      {isDueDatePickerOpen && (
+        <DatePickerModal
+          isOpen={isDueDatePickerOpen}
+          onClose={() => setIsDueDatePickerOpen(false)}
+          onSelectDate={handleDueDateSelect}
+          selectedDate={editedTask.dueDateObj || null}
+          type="due"
+          onDelete={handleDeleteDueDate}
+        />
+      )}
     </div>
   )
 }

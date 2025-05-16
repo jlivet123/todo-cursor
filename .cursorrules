@@ -58,3 +58,5 @@ Dragging to another day & column updates both the start date and category.
 
 📂 Column Management
 Each day's Work and Personal columns are collapsible, allowing for streamlined viewing.
+
+Sticky note functionality allows dragging and dropping sticky notes from category to category.  Categories can be reordered by dragging.  

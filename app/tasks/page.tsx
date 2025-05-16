@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { TaskModal } from "@/components/task-modal"
-import { DndProvider, useDrag, useDrop } from "react-dnd"
+import { DndProvider, useDrag, useDrop, DragPreviewImage } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { useTasks } from "@/lib/hooks/use-tasks"
 import { useAuth } from "@/lib/auth-context"
@@ -42,7 +42,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { isSupabaseConfigured } from "@/lib/supabase"
 import { Task, Subtask, resetToSampleData } from "@/lib/storage"
 import Link from "next/link"
-import { SupabaseDiagnostic } from "@/components/supabase-diagnostic"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { PageLayout } from "@/components/page-layout"
@@ -106,132 +105,137 @@ function DraggableTask({
     toDayIndex: number,
     fromColumnType: "personal" | "work",
     toColumnType: "personal" | "work",
-    taskId?: string, // Added taskId parameter for more reliable identification
+    taskId?: string
   ) => void
   isPastDay: boolean
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null);
 
+  // Configure drag behavior
   const [{ isDragging }, drag] = useDrag({
     type: ITEM_TYPE,
-    item: { taskId: task.id, taskText: task.text, index, dayIndex, columnType },
+    item: () => ({
+      taskId: task.id,
+      taskText: task.text,
+      index,
+      dayIndex,
+      columnType
+    }),
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
-    canDrag: !isPastDay && !task.completed, // Disable dragging for past days and completed tasks
-  })
+    canDrag: !isPastDay && !task.completed,
+  });
 
-  const [{ handlerId }, drop] = useDrop({
+  // Configure drop behavior
+  const [, drop] = useDrop({
     accept: ITEM_TYPE,
-    collect(monitor) {
-      return {
-        handlerId: monitor.getHandlerId(),
-      }
-    },
     hover(item: any, monitor) {
+      // Don't allow dropping on completed or past tasks
       if (!ref.current || isPastDay || task.completed) {
-        return
+        return;
       }
       
-      const dragTaskId = item.taskId
-      const dragIndex = item.index
-      const dragDayIndex = item.dayIndex
-      const dragColumnType = item.columnType
-      const hoverTaskId = task.id
-      const hoverIndex = index
-      const hoverDayIndex = dayIndex
-      const hoverColumnType = columnType
+      const dragTaskId = item.taskId;
+      const dragIndex = item.index;
+      const dragDayIndex = item.dayIndex;
+      const dragColumnType = item.columnType;
+      const hoverIndex = index;
 
       // Don't replace items with themselves
-      if (dragTaskId === hoverTaskId) {
-        return
+      if (dragTaskId === task.id) {
+        return;
       }
 
-      // For day-to-day or column-to-column dragging, allow the move immediately
-      if (dragDayIndex !== hoverDayIndex || dragColumnType !== hoverColumnType) {
-        // Pass taskId for reliable identification
-        moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
-        item.index = hoverIndex
-        item.dayIndex = hoverDayIndex
-        item.columnType = hoverColumnType
-        return
-      }
+      // Get rectangle on screen
+      const hoverBoundingRect = ref.current.getBoundingClientRect();
+      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+      const clientOffset = monitor.getClientOffset();
+      const hoverClientY = clientOffset!.y - hoverBoundingRect.top;
 
-      // For same day/column dragging, check vertical position
-      const hoverBoundingRect = ref.current?.getBoundingClientRect()
-      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
-      const clientOffset = monitor.getClientOffset()
-      const hoverClientY = clientOffset ? clientOffset.y - hoverBoundingRect.top : 0
-
+      // Only perform the move when the mouse has crossed half of the item's height
+      
       // Dragging downwards
       if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
-        return
+        return;
       }
 
       // Dragging upwards
       if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
-        return
+        return;
       }
 
       // Time to actually perform the action
-      moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
+      moveTask(
+        dragIndex,
+        hoverIndex,
+        dragDayIndex,
+        dayIndex,
+        dragColumnType,
+        columnType,
+        dragTaskId
+      );
 
-      // Note: we're mutating the monitor item here!
-      // Generally it's better to avoid mutations,
-      // but it's good here for the sake of performance
-      item.index = hoverIndex
-      item.dayIndex = hoverDayIndex
-      item.columnType = hoverColumnType
+      // Update the dragged item's position directly to prevent flickering
+      item.index = hoverIndex;
+      item.dayIndex = dayIndex;
+      item.columnType = columnType;
     },
-    canDrop: () => !isPastDay && !task.completed, // Disable dropping for past days and completed tasks
-  })
+    canDrop: () => !isPastDay && !task.completed,
+  });
 
-  // Only apply drag and drop refs if not a past day and not completed
-  const dragDropRef = !isPastDay && !task.completed ? drag(drop(ref)) : ref
+  // Combine the drag and drop refs
+  const dragDropRef = useCallback((node: HTMLDivElement | null) => {
+    ref.current = node;
+    const dragNode = drag(node);
+    drop(dragNode);
+  }, [drag, drop]);
 
-  // Handle checkbox click
+  // Handling checkbox click
   const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    onToggleCompletion()
-  }
+    e.stopPropagation();
+    onToggleCompletion();
+  };
 
   // Format the date for display
-  const displayDate = task.dueDate || task.startDate
+  const displayDate = task.dueDate || task.startDate;
 
   // Truncate description for preview
   const descriptionPreview = task.description
     ? task.description.slice(0, 60) + (task.description.length > 60 ? "..." : "")
-    : ""
+    : "";
 
   // Calculate completion status of subtasks
-  const completedSubtasks = task.subtasks ? task.subtasks.filter((st) => st.completed).length : 0
-  const totalSubtasks = task.subtasks ? task.subtasks.length : 0
-  const hasSubtasks = totalSubtasks > 0
+  const completedSubtasks = task.subtasks ? task.subtasks.filter((st) => st.completed).length : 0;
+  const totalSubtasks = task.subtasks ? task.subtasks.length : 0;
+  const hasSubtasks = totalSubtasks > 0;
 
   // State for expanding/collapsing subtasks
-  const [isExpanded, setIsExpanded] = useState(true) // Default to expanded
+  const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
 
   // Function to toggle expand/collapse state
   const toggleExpand = (e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent task modal from opening
-    setIsExpanded(!isExpanded)
-  }
+    e.stopPropagation(); // Prevent task modal from opening
+    setIsExpanded(!isExpanded);
+  };
 
   return (
     <div
-      ref={dragDropRef as React.RefObject<HTMLDivElement>}
+      ref={dragDropRef}
       className={cn(
         "flex flex-col gap-1 py-2 px-3 rounded-md transition-colors",
-        !isPastDay && !task.completed && "cursor-pointer hover:bg-slate-800",
+        !isPastDay && !task.completed && "cursor-grab active:cursor-grabbing hover:bg-slate-800",
         (isPastDay || task.completed) && "opacity-75",
-        isDragging && "opacity-50"
+        isDragging && "opacity-40 bg-slate-800 shadow-lg"
       )}
       onClick={(e) => {
-        e.stopPropagation()
-        onTaskClick()
+        e.stopPropagation();
+        onTaskClick();
       }}
-      style={{ opacity: isDragging ? 0.5 : 1 }}
-      data-handler-id={handlerId}
+      style={{
+        opacity: isDragging ? 0.4 : 1,
+        cursor: isDragging ? 'grabbing' : (!isPastDay && !task.completed ? 'grab' : 'default')
+      }}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-2">
@@ -309,10 +313,10 @@ function DraggableTask({
           ))}
         </div>
       )}
-
     </div>
-  )
+  );
 }
+
 // Compact Task for Collapsed Column
 function CompactTask({
   task,
@@ -343,13 +347,20 @@ function CompactTask({
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
+  // Configure drag behavior
   const [{ isDragging }, drag] = useDrag({
     type: ITEM_TYPE,
-    item: { taskId: task.id, taskText: task.text, index, dayIndex, columnType },
+    item: () => ({
+      taskId: task.id,
+      taskText: task.text,
+      index,
+      dayIndex,
+      columnType
+    }),
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
-    canDrag: !isPastDay && !task.completed, // Disable dragging for past days and completed tasks
+    canDrag: !isPastDay && !task.completed,
   })
 
   const [{ handlerId }, drop] = useDrop({
@@ -378,47 +389,16 @@ function CompactTask({
         return
       }
 
-      // For day-to-day or column-to-column dragging, allow the move immediately
-      if (dragDayIndex !== hoverDayIndex || dragColumnType !== hoverColumnType) {
-        // Pass taskId for reliable identification
-        moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
-        item.index = hoverIndex
-        item.dayIndex = hoverDayIndex
-        item.columnType = hoverColumnType
-        return
-      }
-
-      // For same day/column dragging, check vertical position
-      const hoverBoundingRect = ref.current?.getBoundingClientRect()
-      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
-      const clientOffset = monitor.getClientOffset()
-      const hoverClientY = clientOffset ? clientOffset.y - hoverBoundingRect.top : 0
-
-      // Dragging downwards
-      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
-        return
-      }
-
-      // Dragging upwards
-      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
-        return
-      }
-
-      // Time to actually perform the action
+      // Move the task immediately
       moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
-
-      // Note: we're mutating the monitor item here!
-      // Generally it's better to avoid mutations,
-      // but it's good here for the sake of performance
+      
+      // Update the dragged item's position
       item.index = hoverIndex
       item.dayIndex = hoverDayIndex
       item.columnType = hoverColumnType
     },
     canDrop: () => !isPastDay && !task.completed, // Disable dropping for past days and completed tasks
   })
-
-  // Only apply drag and drop refs if not a past day and not completed
-  const dragDropRef = !isPastDay && !task.completed ? drag(drop(ref)) : ref
 
   // Handle checkbox click
   const handleCheckboxClick = (e: React.MouseEvent) => {
@@ -428,7 +408,10 @@ function CompactTask({
 
   return (
     <div
-      ref={dragDropRef as React.RefObject<HTMLDivElement>}
+      ref={(node) => {
+        drag(node);
+        drop(node);
+      }}
       className={cn(
         "flex items-center gap-2 px-2 py-2 rounded-md transition-colors my-1",
         !isPastDay && !task.completed && "cursor-grab hover:bg-slate-800",
@@ -436,12 +419,12 @@ function CompactTask({
         isDragging && "opacity-40 border border-blue-500 shadow-lg"
       )}
       onClick={(e) => {
-        e.stopPropagation()
-        onTaskClick()
+        e.stopPropagation();
+        onTaskClick();
       }}
       style={{
         opacity: isDragging ? 0.4 : 1,
-        cursor: isDragging ? 'grabbing' : ((!isPastDay && !task.completed) ? 'grab' : 'default')
+        cursor: isDragging ? 'grabbing' : (!isPastDay && !task.completed ? 'grab' : 'default')
       }}
       data-handler-id={handlerId}
     >
@@ -458,6 +441,7 @@ function CompactTask({
     </div>
   )
 }
+
 // Category Column
 function CategoryColumn({
   title,
@@ -497,6 +481,7 @@ function CategoryColumn({
     toDayIndex: number,
     fromColumnType: "personal" | "work",
     toColumnType: "personal" | "work",
+    taskId?: string
   ) => void
   showNewTaskInput: boolean
   newTaskText: string
@@ -511,77 +496,57 @@ function CategoryColumn({
   isCollapsed: boolean
   onToggleCollapse: () => void
 }) {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (showNewTaskInput && inputRef.current && !isPastDay) {
-      inputRef.current.focus()
+      inputRef.current.focus();
     }
-  }, [showNewTaskInput, isPastDay])
+  }, [showNewTaskInput, isPastDay]);
 
-  const [{ isOver, canDrop }, drop] = useDrop({
+  const [{ isOver }, drop] = useDrop({
     accept: ITEM_TYPE,
     collect: (monitor) => ({
       isOver: monitor.isOver(),
-      canDrop: monitor.canDrop(),
     }),
     drop: (item: any, monitor) => {
-      // Get the source day and column information
-      const fromDayIndex = item.dayIndex
-      const fromColumnType = item.columnType
-      const draggedTaskId = item.taskId
-      
-      // Don't do anything if dragging within the same day and column type
-      if (fromDayIndex === dayIndex && fromColumnType === columnType && !monitor.didDrop()) {
-        // The task wasn't dropped on a specific task item, but on the column
-        // Find the task in the original day/column
-        const task = day.tasks.find(t => t.id === draggedTaskId)
-        if (task) {
-          // No need to update anything since it's the same column and day
-          return
+      if (!monitor.didDrop() && !isPastDay) {
+        const dragTaskId = item.taskId;
+        const dragIndex = item.index;
+        const dragDayIndex = item.dayIndex;
+        const dragColumnType = item.columnType;
+        
+        // If dropping on a different column or day, move the task
+        if (dragColumnType !== columnType || dragDayIndex !== dayIndex) {
+          moveTask(
+            dragIndex,
+            0, // Insert at the beginning of the target column
+            dragDayIndex,
+            dayIndex,
+            dragColumnType,
+            columnType,
+            dragTaskId
+          );
+          
+          return { moved: true };
         }
       }
-      
-      // If being dropped on the column (not a specific task)
-      if (!monitor.didDrop()) {
-        // Insert at the beginning of the list
-        moveTask(
-          item.index, // source index
-          0, // target index (top of the list)
-          fromDayIndex, // source day
-          dayIndex, // target day
-          fromColumnType, // source column
-          columnType // target column
-        )
-      }
     },
-    canDrop: () => !isPastDay, // Disable dropping for past days
-  })
+    canDrop: () => !isPastDay,
+  });
 
-  // Sort tasks: incomplete first, then completed
-  const sortedTasks = [...tasks].sort((a, b) => {
-    if (a.completed === b.completed) return 0
-    return a.completed ? 1 : -1
-  })
-
-  // Get overdue tasks
-  const overdueTasks = sortedTasks.filter(
-    (task) => !task.completed && task.dueDate && isBefore(new Date(task.dueDate), new Date()) && !isPastDay,
-  )
-
-  // Get regular tasks (not overdue)
-  const regularTasks = sortedTasks.filter(
-    (task) => !(!task.completed && task.dueDate && isBefore(new Date(task.dueDate), new Date()) && !isPastDay)
-  )
-
-  // Count of tasks
-  const taskCount = tasks.length
-  const completedCount = tasks.filter((task) => task.completed).length
+  // Apply the drop ref to the container
+  useEffect(() => {
+    if (dropContainerRef.current) {
+      drop(dropContainerRef.current);
+    }
+  }, [drop]);
 
   return (
     <div
       className={cn(
-        "flex flex-col h-full transition-all duration-300 ease-in-out overflow-hidden",
+        "flex flex-col h-full transition-all duration-300 ease-in-out",
         isCollapsed ? "min-w-[50px] max-w-[50px]" : "min-w-[420px] flex-1 p-4"
       )}
     >
@@ -591,7 +556,7 @@ function CategoryColumn({
             <div className="flex items-center gap-2">
               <h3 className="font-medium text-lg">{title}</h3>
               <Badge variant="outline" className="text-xs text-slate-400 border-slate-600">
-                {completedCount}/{taskCount}
+                {tasks.filter(t => t.completed).length}/{tasks.length}
               </Badge>
             </div>
             <div className="flex items-center gap-2">
@@ -599,9 +564,9 @@ function CategoryColumn({
                 <button
                   className="flex items-center justify-center w-6 h-6 text-slate-400 hover:text-slate-200 cursor-pointer"
                   onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onToggleNewTaskInput()
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onToggleNewTaskInput();
                   }}
                 >
                   <Plus className="h-5 w-5" />
@@ -610,9 +575,9 @@ function CategoryColumn({
               <button
                 className="flex items-center justify-center w-6 h-6 text-slate-400 hover:text-slate-200 cursor-pointer"
                 onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  onToggleCollapse()
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleCollapse();
                 }}
               >
                 <Minimize2 className="h-4 w-4" />
@@ -623,9 +588,9 @@ function CategoryColumn({
           <button
             className="flex items-center justify-center w-full h-6 text-slate-400 hover:text-slate-200 cursor-pointer"
             onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              onToggleCollapse()
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleCollapse();
             }}
           >
             <Maximize2 className="h-4 w-4" />
@@ -653,10 +618,10 @@ function CategoryColumn({
           )}
 
           <div 
-            ref={drop as unknown as React.RefObject<HTMLDivElement>}
+            ref={dropContainerRef}
             className={cn(
-              "space-y-6 overflow-y-auto flex-1 rounded-md",
-              isOver && canDrop && !isPastDay && "ring-2 ring-blue-500 ring-opacity-50 p-2 bg-slate-800/20"
+              "space-y-6 overflow-y-auto overflow-x-hidden flex-1 rounded-md",
+              isOver && !isPastDay && "bg-slate-800/30 transition-colors duration-200"
             )}>
             {(() => {
               // Section 1: Overdue
@@ -836,8 +801,9 @@ function CategoryColumn({
         </div>
       )}
     </div>
-  )
+  );
 }
+
 // Day Column
 function DayColumn({
   day,
@@ -874,6 +840,7 @@ function DayColumn({
     toDayIndex: number,
     fromColumnType: "personal" | "work",
     toColumnType: "personal" | "work",
+    taskId?: string
   ) => void
   showNewTaskInput: boolean
   personalNewTaskText: string
@@ -899,6 +866,19 @@ function DayColumn({
   // Filter personal and work tasks
   const personalTasks = day.tasks.filter((task) => task.category === "personal")
   const workTasks = day.tasks.filter((task) => task.category === "work")
+  
+  // Debug log to check tasks for this day
+  const debugDate = format(day.date, "yyyy-MM-dd");
+  console.log(`Day ${debugDate} (${dayIndex}) has ${day.tasks.length} tasks:`, 
+    day.tasks.map(t => ({
+      id: t.id.slice(0, 6),
+      text: t.text,
+      category: t.category,
+      startDate: t.startDate,
+      dueDate: t.dueDate
+    }))
+  );
+  console.log(`  Personal: ${personalTasks.length}, Work: ${workTasks.length}`);
 
   return (
     <div
@@ -919,7 +899,7 @@ function DayColumn({
         </div>
       </div>
 
-      <div className="flex h-[calc(100vh-170px)]">
+      <div className="flex h-[calc(100vh-170px)] overflow-hidden">
         <CategoryColumn
           title="Personal"
           columnType="personal"
@@ -971,49 +951,77 @@ function DayColumn({
     </div>
   )
 }
+
 // Tasks main component
 export default function Tasks() {
-  const { days, isLoading, error, refreshTasks } = useTasks()
-  const { user } = useAuth()
-  const router = useRouter()
+  const [localLoading, setLocalLoading] = useState(true);
+  const { days, isLoading, error, refreshTasks } = useTasks();
+  const { user } = useAuth();
+  const router = useRouter();
   
   // State for the modal
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   
   // State for day columns
-  const [visibleDays, setVisibleDays] = useState(days)
-  const [currentDayIndex, setCurrentDayIndex] = useState(0)
+  const [visibleDays, setVisibleDays] = useState(days);
+  const [currentDayIndex, setCurrentDayIndex] = useState(0);
   
   // State for new task input
-  const [showNewTaskInput, setShowNewTaskInput] = useState(false)
-  const [personalNewTaskTexts, setPersonalNewTaskTexts] = useState<string[]>(Array(7).fill(''))
-  const [workNewTaskTexts, setWorkNewTaskTexts] = useState<string[]>(Array(7).fill(''))
+  const [showNewTaskInput, setShowNewTaskInput] = useState(false);
+  const [personalNewTaskTexts, setPersonalNewTaskTexts] = useState<string[]>(Array(7).fill(''));
+  const [workNewTaskTexts, setWorkNewTaskTexts] = useState<string[]>(Array(7).fill(''));
   
   // State for collapsed columns
-  const [personalCollapsed, setPersonalCollapsed] = useState<boolean[]>(Array(7).fill(false))
-  const [workCollapsed, setWorkCollapsed] = useState<boolean[]>(Array(7).fill(false))
+  const [personalCollapsed, setPersonalCollapsed] = useState<boolean[]>(Array(7).fill(false));
+  const [workCollapsed, setWorkCollapsed] = useState<boolean[]>(Array(7).fill(false));
   
   // Helper function to toggle column collapse state
   const toggleColumnCollapse = (dayIndex: number, columnType: "personal" | "work") => {
     if (columnType === "personal") {
-      const newCollapsedState = [...personalCollapsed]
-      newCollapsedState[dayIndex] = !newCollapsedState[dayIndex]
-      setPersonalCollapsed(newCollapsedState)
+      const newCollapsedState = [...personalCollapsed];
+      newCollapsedState[dayIndex] = !newCollapsedState[dayIndex];
+      setPersonalCollapsed(newCollapsedState);
     } else {
-      const newCollapsedState = [...workCollapsed]
-      newCollapsedState[dayIndex] = !newCollapsedState[dayIndex]
-      setWorkCollapsed(newCollapsedState)
+      const newCollapsedState = [...workCollapsed];
+      newCollapsedState[dayIndex] = !newCollapsedState[dayIndex];
+      setWorkCollapsed(newCollapsedState);
     }
-  }
+  };
+  
+  // Update local loading state with a delay to prevent flash
+  useEffect(() => {
+    if (!isLoading && days.length > 0) {
+      // Once we have data, clear loading state after a short delay
+      const timer = setTimeout(() => {
+        setLocalLoading(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (isLoading) {
+      // Only show loading state if it persists for more than 1000ms
+      // This prevents flashing during quick operations like drag and drop
+      const timer = setTimeout(() => {
+        if (isLoading) {
+          setLocalLoading(true);
+        }
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, days]);
   
   // Update visible days when days changes
   useEffect(() => {
     if (days && days.length > 0) {
-      console.log("Days updated:", days)
-      setVisibleDays(days)
+      setVisibleDays(days);
     }
-  }, [days])
+  }, [days]);
+  
+  // Custom refresh function to update UI without showing loading state
+  const handleRefresh = () => {
+    // Don't set loading state to true immediately to avoid flickering
+    refreshTasks();
+  };
   
   // Function to handle task clicks
   const handleTaskClick = (taskId: string) => {
@@ -1059,8 +1067,8 @@ export default function Tasks() {
         taskToUpdate.completionDateMMMD = format(today, "MMM d")
       } else {
         // If uncompleting, remove dates
-        taskToUpdate.completionDate = null
-        taskToUpdate.completionDateMMMD = null
+        taskToUpdate.completionDate = undefined
+        taskToUpdate.completionDateMMMD = undefined
       }
       
       // Update localStorage
@@ -1139,84 +1147,119 @@ export default function Tasks() {
     toColumnType: "personal" | "work",
     dragTaskId?: string, // Optional task ID for more reliable identification
   ) => {
-    if (isLoading) return
+    // Don't attempt to move tasks while the app is in a loading state
+    if (isLoading) return;
     
-    // Get the current tasks from localStorage to ensure we have the latest data
-    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks"
-    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]")
+    console.log(`Moving task: ${dragTaskId} from day ${fromDayIndex} (${fromColumnType}) to day ${toDayIndex} (${toColumnType})`);
     
-    // Find the task being moved - first try by taskId if provided
-    let taskToMove: Task | null = null
+    // First, find the task using taskId (most reliable method)
+    let taskToMove: Task | null = null;
     
     if (dragTaskId) {
-      // If dragTaskId is provided, find the task directly by ID (more reliable)
-      
-      // First try to find the task in localStorage
-      const foundTaskInStorage = storedTasks.find((t: Task) => t.id === dragTaskId)
-      if (foundTaskInStorage) {
-        taskToMove = { ...foundTaskInStorage }
-      }
-      
-      // If not found in localStorage, try to find it in the days array
-      if (!taskToMove) {
-        // Search through all days and their tasks
-        for (let i = 0; i < days.length; i++) {
-          const foundTask = days[i].tasks.find(t => t.id === dragTaskId)
-          if (foundTask) {
-            taskToMove = { ...foundTask }
-            // Update fromDayIndex if the task was found in a different day
-            if (i !== fromDayIndex) {
-              console.log(`Task found in day ${i} instead of specified fromDayIndex ${fromDayIndex}`)
-              fromDayIndex = i
-            }
-            break
-          }
+      // Look for the task in all days
+      for (const day of visibleDays) {
+        const foundTask = day.tasks.find(t => t.id === dragTaskId);
+        if (foundTask) {
+          taskToMove = { ...foundTask };
+          break;
         }
-      }
-    } else {
-      // Otherwise use the day and column index method as fallback
-      const allTasksForDay = days[fromDayIndex].tasks
-      const tasksInSourceColumn = allTasksForDay.filter(task => task.category === fromColumnType)
-      
-      if (dragIndex < tasksInSourceColumn.length) {
-        taskToMove = { ...tasksInSourceColumn[dragIndex] }
       }
     }
     
-    console.log("moveTask called with:", { dragIndex, hoverIndex, fromDayIndex, toDayIndex, fromColumnType, toColumnType, dragTaskId });
-
+    // If task wasn't found by ID, try using indices
+    if (!taskToMove && fromDayIndex >= 0 && fromDayIndex < visibleDays.length) {
+      const tasksInSourceColumn = visibleDays[fromDayIndex].tasks.filter(
+        task => task.category === fromColumnType
+      );
+      
+      if (dragIndex >= 0 && dragIndex < tasksInSourceColumn.length) {
+        taskToMove = { ...tasksInSourceColumn[dragIndex] };
+      }
+    }
+    
+    // If we still couldn't find the task, abort
     if (!taskToMove) {
-      console.error("Failed to find task to move", { dragIndex, fromDayIndex, fromColumnType, dragTaskId });
+      console.error("Could not find task to move");
       return;
     }
     
-    // Update the task's category if it's being moved between columns
+    // Make a copy of days for immutable updates
+    const newDays = [...visibleDays];
+    
+    // Create an updated task with new properties
+    const updatedTask = { ...taskToMove };
+    
+    // 1. Apply category change if moving between columns
     if (fromColumnType !== toColumnType) {
-      taskToMove.category = toColumnType
+      console.log(`Changing category from ${fromColumnType} to ${toColumnType}`);
+      updatedTask.category = toColumnType;
     }
     
-    // Update the task's due date if it's being moved between days
-    if (fromDayIndex !== toDayIndex && days[toDayIndex]) {
-      const targetDate = days[toDayIndex].date
-      taskToMove.dueDate = format(targetDate, "yyyy-MM-dd")
+    // 2. Apply date change if moving between days
+    if (fromDayIndex !== toDayIndex) {
+      console.log(`Changing start date to match target day ${toDayIndex}`);
+      const targetDate = visibleDays[toDayIndex].date;
+      const formattedDate = format(targetDate, "MMM d");
+      const isoDate = format(targetDate, "yyyy-MM-dd");
+      
+      // Update start date (for display)
+      updatedTask.startDate = formattedDate;
+      
+      // Update due date (ISO format)
+      updatedTask.dueDate = isoDate;
     }
+    
+    // 3. Remove the task from its original day
+    if (fromDayIndex >= 0 && fromDayIndex < newDays.length) {
+      newDays[fromDayIndex] = {
+        ...newDays[fromDayIndex],
+        tasks: newDays[fromDayIndex].tasks.filter(t => t.id !== taskToMove!.id)
+      };
+    }
+    
+    // 4. Add the task to its new day
+    if (toDayIndex >= 0 && toDayIndex < newDays.length) {
+      // Get all tasks in the target day
+      const targetDayTasks = [...newDays[toDayIndex].tasks];
+      
+      // Insert the task at the specified position
+      if (hoverIndex <= targetDayTasks.length) {
+        targetDayTasks.splice(hoverIndex, 0, updatedTask);
+      } else {
+        // If the position is out of bounds, append to the end
+        targetDayTasks.push(updatedTask);
+      }
+      
+      // Update the day
+      newDays[toDayIndex] = {
+        ...newDays[toDayIndex],
+        tasks: targetDayTasks
+      };
+    }
+    
+    // 5. Update the visible days
+    setVisibleDays(newDays);
+    
+    // 6. Save the changes to localStorage
+    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
+    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
     
     // Update the task in localStorage
     const updatedStoredTasks = storedTasks.map((t: Task) => {
-      if (t.id === taskToMove.id) {
-        return taskToMove
+      if (t.id === taskToMove!.id) {
+        return updatedTask;
       }
-      return t
-    })
+      return t;
+    });
     
     // Save to localStorage
-    localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks))
+    localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks));
     
-    // Force a refresh of the tasks to update the UI
+    // 7. Update the server in the background after a short delay
     setTimeout(() => {
-      refreshTasks()
-    }, 0)
-  }
+      refreshTasks();
+    }, 200);
+  };
   
   // Function to add a new task
   const handleAddNewTask = (dayIndex: number, columnType: "personal" | "work") => {
@@ -1329,7 +1372,7 @@ export default function Tasks() {
       <div className="w-full">
         <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center space-x-2">
-            <Button variant="ghost" size="sm" onClick={() => refreshTasks()}>
+            <Button variant="ghost" size="sm" onClick={handleRefresh}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
@@ -1359,7 +1402,7 @@ export default function Tasks() {
           </div>
         </div>
         
-        {isLoading ? (
+        {localLoading && days.length === 0 ? (
           <div className="flex justify-center items-center h-[calc(100vh-170px)]">
             <div className="space-y-4">
               <Skeleton className="h-8 w-48 mb-4" />
@@ -1381,8 +1424,8 @@ export default function Tasks() {
             </Button>
           </div>
         ) : (
-          <DndProvider backend={HTML5Backend}>
-            <div className="flex overflow-x-auto h-[calc(100vh-120px)]">
+          <DndProvider backend={HTML5Backend} options={{ enableMouseEvents: true, enableTouchEvents: true }}>
+            <div className="flex overflow-x-auto overflow-y-hidden h-[calc(100vh-120px)]">
               {visibleDays.map((day, dayIndex) => (
                 <DayColumn
                   key={format(day.date, "yyyy-MM-dd")}
@@ -1400,7 +1443,7 @@ export default function Tasks() {
                   onTogglePersonalNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "personal")}
                   onToggleWorkNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "work")}
                   onAddNewTask={handleAddNewTask}
-                  isLoading={isLoading}
+                  isLoading={localLoading}
                   onTaskCategoryChange={handleTaskCategoryChange}
                   onKeyDown={handleInputKeyDown}
                   isPersonalCollapsed={personalCollapsed[dayIndex]}
@@ -1419,12 +1462,12 @@ export default function Tasks() {
             isOpen={isTaskModalOpen}
             onClose={() => setIsTaskModalOpen(false)}
             onSave={(updatedTask) => {
-              refreshTasks()
-              setIsTaskModalOpen(false)
+              handleRefresh();
+              setIsTaskModalOpen(false);
             }}
             onDelete={(taskId) => {
-              refreshTasks()
-              setIsTaskModalOpen(false)
+              handleRefresh();
+              setIsTaskModalOpen(false);
             }}
           />
         )}

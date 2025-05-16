@@ -27,6 +27,15 @@ export interface Task {
   completionDateObj?: Date | null
 }
 
+// Update the StickyNote interface to include category
+export interface StickyNote {
+  id: string
+  content: string
+  color: string
+  createdAt: string
+  category: string
+}
+
 export interface DecisionMatrixEntry {
   id: string
   limitingBelief: string
@@ -47,6 +56,8 @@ const TASKS_STORAGE_KEY = "taskmaster_tasks"
 const USER_STORAGE_KEY = "taskmaster_user"
 const INITIALIZED_KEY = "taskmaster_initialized"
 const DECISION_MATRIX_STORAGE_KEY = "taskmaster_decision_matrix"
+// Add this constant after the existing constants
+const STICKY_NOTES_STORAGE_KEY = "taskmaster_sticky_notes"
 
 
 // Helper function to check if we're in a browser environment
@@ -682,5 +693,28 @@ function saveDecisionMatrixToLocalStorage(entries: DecisionMatrixEntry[]): void 
     localStorage.setItem(DECISION_MATRIX_STORAGE_KEY, JSON.stringify(entries))
   } catch (error) {
     console.error("Error saving decision matrix to localStorage:", error)
+  }
+}
+
+// Add these functions at the end of the file
+export function getStickyNotes(): StickyNote[] {
+  if (!isBrowser()) return []
+
+  try {
+    const notesJson = localStorage.getItem(STICKY_NOTES_STORAGE_KEY)
+    return notesJson ? JSON.parse(notesJson) : []
+  } catch (error) {
+    console.error("Error getting sticky notes from localStorage:", error)
+    return []
+  }
+}
+
+export function saveStickyNotes(notes: StickyNote[]): void {
+  if (!isBrowser()) return
+
+  try {
+    localStorage.setItem(STICKY_NOTES_STORAGE_KEY, JSON.stringify(notes))
+  } catch (error) {
+    console.error("Error saving sticky notes to localStorage:", error)
   }
 }

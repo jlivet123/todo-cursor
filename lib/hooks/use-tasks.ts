@@ -50,14 +50,17 @@ function throttle<T extends (...args: any[]) => any>(func: T, delay: number): (.
 
 // Debugging function to log task assignments
 const logTaskAssignments = (days: DayWithTasks[]) => {
-  console.log("=== TASK ASSIGNMENT DEBUGGING ===");
-  days.forEach((day, index) => {
-    const dateStr = format(day.date, "MMM d");
-    console.log(`Day ${index}: ${dateStr} - ${day.tasks.length} tasks`);
-    day.tasks.forEach(task => {
-      console.log(`  - Task: ${task.text} (ID: ${task.id.slice(0, 6)}...)`);
-      console.log(`    Start Date: ${task.startDate}, Completed: ${task.completed}`);
-    });
+  console.log('=== TASK ASSIGNMENT DEBUGGING ===');
+  
+  days.forEach((day, idx) => {
+    console.log(`Day ${idx}: ${format(day.date, 'MMM d')} - ${day.tasks.length} tasks`);
+    
+    if (day.tasks.length > 0) {
+      day.tasks.forEach(task => {
+        console.log(`  - Task: ${task.text} (ID: ${task.id.substring(0, 6)}...)`);
+        console.log(`    Start Date: ${task.startDate}, Completed: ${task.completed}`);
+      });
+    }
   });
 };
 
@@ -262,14 +265,10 @@ export function useTasks() {
                   const matches = completionDate.getFullYear() === date.getFullYear() &&
                                  completionDate.getMonth() === date.getMonth() &&
                                  completionDate.getDate() === date.getDate();
-                  if (matches) {
-                    console.log(`Completed task ${task.text} showing on ${dateStr} because it was completed on this day`);
-                  }
                   return matches;
                 }
                 
                 if (task.completionDate === dateStr) {
-                  console.log(`Completed task ${task.text} showing on ${dateStr} because completionDate matches`);
                   return true;
                 }
                 
@@ -277,61 +276,40 @@ export function useTasks() {
                 return false;
               }
               
-              // For incomplete tasks, strictly match this day's date
+              // For incomplete tasks, check if they start on this day
+              // First check startDate string match - most common format
               if (task.startDate === dateStr) {
-                console.log(`Task ${task.text} assigned to future day ${dateStr} by exact startDate match`);
                 return true;
               }
               
-              // Use startDateObj for precise date matching if available
+              // Check startDateObj for precise date matching if available
               if (task.startDateObj) {
-                const doesMatch = format(task.startDateObj, "MMM d") === dateStr;
-                if (doesMatch) {
-                  console.log(`Task ${task.text} assigned to future day ${dateStr} by startDateObj match`);
-                }
-                return doesMatch;
+                const taskDateStr = format(task.startDateObj, "MMM d");
+                return taskDateStr === dateStr;
+              }
+              
+              // Check if dueDate matches this day
+              if (task.dueDate) {
+                try {
+                  const dueDate = new Date(task.dueDate);
+                  if (!isNaN(dueDate.getTime())) {
+                    const dueDateStr = format(dueDate, "MMM d");
+                    return dueDateStr === dateStr;
+                  }
+                } catch (e) { /* Ignore parsing errors */ }
               }
               
               // No match found
               return false;
             });
             
-            // 2. Tasks completed on this future day
-            const completedOnThisDay = tasks.filter(task => {
-              // Skip if already included
-              if (assignedToThisDay.some(t => t.id === task.id)) return false;
-              
-              // Check for completion on this day
-              if (task.completionDateObj) {
-                const completionDate = new Date(task.completionDateObj);
-                return completionDate.getFullYear() === date.getFullYear() &&
-                       completionDate.getMonth() === date.getMonth() &&
-                       completionDate.getDate() === date.getDate();
-              }
-              
-              if (task.completionDate) {
-                if (task.completionDate === dateStr) return true;
-                
-                try {
-                  const completionD = new Date(task.completionDate);
-                  if (!isNaN(completionD.getTime())) {
-                    return completionD.getFullYear() === date.getFullYear() &&
-                           completionD.getMonth() === date.getMonth() &&
-                           completionD.getDate() === date.getDate();
-                  }
-                } catch (e) { /* Ignore parsing errors */ }
-              }
-              
-              return false;
-            });
+            // Add debugging
+            if (assignedToThisDay.length > 0) {
+              console.log(`Day ${dateStr} has ${assignedToThisDay.length} assigned tasks:`, 
+                assignedToThisDay.map(t => t.text));
+            }
             
-            // Combine without duplicates
-            const taskMap = new Map<string, Task>();
-            [...assignedToThisDay, ...completedOnThisDay].forEach(task => {
-              taskMap.set(task.id, task);
-            });
-            
-            dayTasks = Array.from(taskMap.values());
+            dayTasks = assignedToThisDay;
           }
           
           // Sort tasks by position
@@ -781,26 +759,13 @@ export function useTasks() {
         if (!draggedTask) {
           draggedTask = allTasks.find(t => t.id === taskId);
         }
-        
-        if (draggedTask) {
-          console.log(`Found task by ID: ${draggedTask.text} (ID: ${draggedTask.id})`);
-        }
       }
       
       // If still not found, try by index and category
       if (!draggedTask && dragIndex !== undefined && dragIndex >= 0) {
-        // First try by position and category, limiting to tasks with the matching category
         const tasksWithCategory = days[fromDayIndex].tasks.filter(t => t.category === fromColumnType);
         if (tasksWithCategory.length > dragIndex) {
           draggedTask = tasksWithCategory[dragIndex];
-          console.log(`Found task by category and index: ${draggedTask.text} (ID: ${draggedTask.id})`);
-        } else if (days[fromDayIndex].tasks.length > 0) {
-          // As a fallback, just pick the first task with matching category
-          const firstTaskWithCategory = days[fromDayIndex].tasks.find(t => t.category === fromColumnType);
-          if (firstTaskWithCategory) {
-            draggedTask = firstTaskWithCategory;
-            console.log(`Fallback to first task with category: ${draggedTask.text} (ID: ${draggedTask.id})`);
-          }
         }
       }
 
@@ -810,105 +775,81 @@ export function useTasks() {
         return;
       }
       
-      // If actually moving to a different day or column - that's when we need to save
-      if (fromDayIndex !== toDayIndex || fromColumnType !== toColumnType) {
-        console.log(`Moving task: ${draggedTask.text} (ID: ${draggedTask.id}) from day ${fromDayIndex} to day ${toDayIndex}`);
-        
-        // Create a copy of the days array
-        const newDays = [...days];
+      // Create updated task with new properties
+      const updatedTask = {
+        ...draggedTask,
+        category: toColumnType, // Always update category
+      };
 
-        // Remove the task from the source day using its ID
+      // If moving to a different day, update both startDate and dueDate
+      if (fromDayIndex !== toDayIndex) {
+        const targetDate = days[toDayIndex].date;
+        const formattedDate = format(targetDate, "MMM d");
+        const isoDate = format(targetDate, "yyyy-MM-dd");
+        
+        updatedTask.startDate = formattedDate;
+        updatedTask.startDateObj = targetDate;
+        updatedTask.dueDate = isoDate;
+      }
+
+      // Optimistically update the UI state
+      setDays(prevDays => {
+        const newDays = [...prevDays];
+        
+        // Remove from source day
         newDays[fromDayIndex] = {
           ...newDays[fromDayIndex],
-          tasks: newDays[fromDayIndex].tasks.filter(t => t.id !== draggedTask!.id),
+          tasks: newDays[fromDayIndex].tasks.filter(t => t.id !== draggedTask!.id)
         };
         
-        // Create updated task with new day and category
-        const updatedTask = {
-          ...draggedTask,
-          startDate: format(newDays[toDayIndex].date, "MMM d"),
-          startDateObj: newDays[toDayIndex].date,
-          category: toColumnType,
-        };
-
-        console.log(`Updated task: ${updatedTask.text} to new start date: ${updatedTask.startDate}`);
-
-        // Insert the updated task at the target position
+        // Add to target day
         newDays[toDayIndex] = {
           ...newDays[toDayIndex],
           tasks: [
             ...newDays[toDayIndex].tasks.slice(0, hoverIndex),
             updatedTask,
-            ...newDays[toDayIndex].tasks.slice(hoverIndex),
-          ],
-        };
-
-        // Update the days state
-        setDays(newDays);
-        
-        // Save the updated task to persist the changes
-        try {
-          // Perform a direct update in Supabase to minimize data transfer
-          const supabase = getSupabaseClient();
-          if (supabase) {
-            console.log(`Saving task directly to Supabase: ${updatedTask.id}`);
-            const { error } = await supabase
-              .from("tasks")
-              .update({
-                start_date: updatedTask.startDate,
-                category: updatedTask.category
-              })
-              .eq("id", updatedTask.id);
-              
-            if (error) {
-              console.error("Error updating task:", error);
-              // Fall back to full save
-              await saveTask(updatedTask);
-            }
-          } else {
-            // No Supabase connection, use regular save
-            await saveTask(updatedTask);
-          }
-        } catch (err) {
-          console.error("Error saving moved task:", err);
-        }
-      } else if (fromDayIndex === toDayIndex && hoverIndex !== dragIndex) {
-        // Just reordering within the same day and column
-        console.log(`Reordering task within day ${toDayIndex}`);
-        
-        // Create a copy of the days array
-        const newDays = [...days];
-        
-        // Get all tasks for this category
-        const tasksInCategory = newDays[toDayIndex].tasks.filter(t => t.category === fromColumnType);
-        
-        // Remove the dragged task
-        const remainingTasks = tasksInCategory.filter(t => t.id !== draggedTask!.id);
-        
-        // Insert the task at the new position
-        const reorderedTasks = [
-          ...remainingTasks.slice(0, hoverIndex),
-          draggedTask,
-          ...remainingTasks.slice(hoverIndex)
-        ];
-        
-        // Replace just the tasks for this category
-        newDays[toDayIndex] = {
-          ...newDays[toDayIndex],
-          tasks: [
-            ...newDays[toDayIndex].tasks.filter(t => t.category !== fromColumnType),
-            ...reorderedTasks
+            ...newDays[toDayIndex].tasks.slice(hoverIndex)
           ]
         };
         
-        // Update the state
-        setDays(newDays);
-        
-        // Update the task positions in the database to persist the new order
-        // A small delay ensures the state update has completed
-        setTimeout(() => {
-          updateTaskPositionsForDayAndCategory(toDayIndex, fromColumnType);
-        }, 100);
+        return newDays;
+      });
+      
+      // Update allTasks state
+      setAllTasks(prevTasks => 
+        prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t)
+      );
+
+      // Save to backend without waiting
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          supabase
+            .from("tasks")
+            .update({
+              start_date: updatedTask.startDate,
+              due_date: updatedTask.dueDate,
+              category: updatedTask.category
+            })
+            .eq("id", updatedTask.id)
+            .then(({ error }) => {
+              if (error) {
+                console.error("Error updating task:", error);
+                saveTask(updatedTask).catch(console.error);
+              }
+            });
+        } else {
+          saveTask(updatedTask).catch(console.error);
+        }
+
+        // Update positions in background if needed
+        if (fromDayIndex === toDayIndex && fromColumnType === toColumnType) {
+          setTimeout(() => {
+            updateTaskPositionsForDayAndCategory(toDayIndex, toColumnType);
+          }, 100);
+        }
+      } catch (err) {
+        console.error("Error saving moved task:", err);
       }
     } catch (err) {
       console.error("Error moving task:", err);
