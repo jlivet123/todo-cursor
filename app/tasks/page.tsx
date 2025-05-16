@@ -955,7 +955,7 @@ function DayColumn({
 // Tasks main component
 export default function Tasks() {
   const [localLoading, setLocalLoading] = useState(true);
-  const { days, isLoading, error, refreshTasks } = useTasks();
+  const { days, isLoading, error, refreshTasks, updateTask, deleteTask } = useTasks();
   const { user } = useAuth();
   const router = useRouter();
   
@@ -1461,13 +1461,15 @@ export default function Tasks() {
             task={selectedTask}
             isOpen={isTaskModalOpen}
             onClose={() => setIsTaskModalOpen(false)}
-            onSave={(updatedTask) => {
-              handleRefresh();
+            onSave={async (updatedTask) => {
+              await updateTask(updatedTask);
               setIsTaskModalOpen(false);
+              setSelectedTask(null);
             }}
-            onDelete={(taskId) => {
-              handleRefresh();
+            onDelete={async (taskId) => {
+              await deleteTask(taskId);
               setIsTaskModalOpen(false);
+              setSelectedTask(null);
             }}
           />
         )}
