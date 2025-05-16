@@ -283,9 +283,14 @@ export function useTasks() {
               }
               
               // Check startDateObj for precise date matching if available
-              if (task.startDateObj) {
-                const taskDateStr = format(task.startDateObj, "MMM d");
-                return taskDateStr === dateStr;
+              if (task.startDateObj && !isNaN(task.startDateObj.getTime())) {
+                try {
+                  const taskDateStr = format(task.startDateObj, "MMM d");
+                  return taskDateStr === dateStr;
+                } catch (e) {
+                  console.error(`Error formatting startDateObj for task ${task.id}:`, e);
+                  return false;
+                }
               }
               
               // Check if dueDate matches this day
@@ -529,38 +534,45 @@ export function useTasks() {
       if (!taskFound) return
 
       // If start date has changed, move task to the appropriate day
-      if (updatedTask.startDateObj) {
-        const targetDateStr = format(updatedTask.startDateObj, "MMM d")
+      if (updatedTask.startDateObj && !isNaN(updatedTask.startDateObj.getTime())) {
+        try {
+          const targetDateStr = format(updatedTask.startDateObj, "MMM d")
 
-        // Find the target day index
-        const targetDayIndex = days.findIndex((day) => format(day.date, "MMM d") === targetDateStr)
+          // Find the target day index
+          const targetDayIndex = days.findIndex((day) => format(day.date, "MMM d") === targetDateStr)
+          
+          if (targetDayIndex !== -1 && targetDayIndex !== currentDayIndex) {
+            // Move task between days
+            setDays((prevDays) => {
+              const newDays = [...prevDays]
 
-        if (targetDayIndex !== -1 && targetDayIndex !== currentDayIndex) {
-          // Move task between days
-          setDays((prevDays) => {
-            const newDays = [...prevDays]
+              // Remove from current day
+              newDays[currentDayIndex] = {
+                ...newDays[currentDayIndex],
+                tasks: newDays[currentDayIndex].tasks.filter((task) => task.id !== updatedTask.id),
+              }
 
-            // Remove from current day
-            newDays[currentDayIndex] = {
-              ...newDays[currentDayIndex],
-              tasks: newDays[currentDayIndex].tasks.filter((task) => task.id !== updatedTask.id),
-            }
+              // Add to target day
+              newDays[targetDayIndex] = {
+                ...newDays[targetDayIndex],
+                tasks: [...newDays[targetDayIndex].tasks, updatedTask],
+              }
 
-            // Add to target day
-            newDays[targetDayIndex] = {
-              ...newDays[targetDayIndex],
-              tasks: [savedTask, ...newDays[targetDayIndex].tasks],
-            }
-
-            return newDays
-          })
-
-          return
+              return newDays
+            })
+          }
+        } catch (e) {
+          console.error(`Error processing task startDate for task ${updatedTask.id}:`, e);
         }
+      } else {
+        // If we're not moving the task, just update it in place
+        setDays((prevDays) => {
+          return prevDays.map((day) => ({
+            ...day,
+            tasks: day.tasks.map((task) => (task.id === updatedTask.id ? savedTask : task)),
+          }))
+        })
       }
-
-      // If we're not moving the task, just update it in place
-      setDays((prevDays) => {
         return prevDays.map((day) => ({
           ...day,
           tasks: day.tasks.map((task) => (task.id === updatedTask.id ? savedTask : task)),

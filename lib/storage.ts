@@ -135,6 +135,43 @@ export async function getTasks(): Promise<Task[]> {
         completionDateMMMD = format(completionDateObj, "MMM d");
       }
       
+      // Create Date objects for startDate and dueDate with proper validation
+      let startDateObj: Date | null = null;
+      let dueDateObj: Date | null = null;
+      
+      // Format startDate and dueDate in "MMM d" format if we have valid date objects
+      let formattedStartDate = task.start_date;
+      let formattedDueDate = task.due_date;
+      
+      // Safely create date objects with validation
+      try {
+        if (task.start_date && task.start_date.trim() !== '') {
+          startDateObj = new Date(task.start_date + 'T00:00:00');
+          if (!isNaN(startDateObj.getTime())) {
+            formattedStartDate = format(startDateObj, "MMM d");
+          } else {
+            startDateObj = null; // Reset if invalid date
+          }
+        }
+      } catch (e) {
+        console.error(`Error parsing startDate for task ${task.id}:`, e);
+        startDateObj = null;
+      }
+      
+      try {
+        if (task.due_date && task.due_date.trim() !== '') {
+          dueDateObj = new Date(task.due_date + 'T00:00:00');
+          if (!isNaN(dueDateObj.getTime())) {
+            formattedDueDate = format(dueDateObj, "MMM d");
+          } else {
+            dueDateObj = null; // Reset if invalid date
+          }
+        }
+      } catch (e) {
+        console.error(`Error parsing dueDate for task ${task.id}:`, e);
+        dueDateObj = null;
+      }
+      
       return {
         ...task,
         id: task.id,
@@ -144,13 +181,15 @@ export async function getTasks(): Promise<Task[]> {
         time: task.time,
         timeDisplay: task.time_display,
         description: task.description,
-        startDate: task.start_date,
-        dueDate: task.due_date,
+        startDate: formattedStartDate,
+        dueDate: formattedDueDate,
         position: task.position,
         completionDate: task.completion_date,
         // Use our generated MMM d format since the column doesn't exist in the database
         completionDateMMMD: completionDateMMMD,
         completionDateObj,
+        startDateObj,
+        dueDateObj,
         subtasks: subtasks
           .filter((subtask) => subtask.task_id === task.id)
           .map((subtask) => ({
