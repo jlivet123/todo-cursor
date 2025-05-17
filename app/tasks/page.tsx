@@ -650,9 +650,41 @@ function CategoryColumn({
                 // Don't include overdue tasks in to-dos (they're in their own section)
                 if (task.dueDate && isBefore(new Date(task.dueDate), day.date) && isTodayDay) return false;
                 
-                // If we're dealing with a future day
+                // For today, we want to show:
+                // 1. Tasks explicitly assigned to today
+                // 2. Incomplete tasks from the past (rollover)
+                if (isTodayDay) {
+                  // For tasks with a start date, check if it's today or in the past
+                  if (task.startDate) {
+                    try {
+                      // If we have a date object, use it for reliable comparison
+                      if (task.startDateObj) {
+                        // Show tasks from today or earlier
+                        return isBefore(task.startDateObj, day.date) || isToday(task.startDateObj);
+                      }
+                      
+                      // Try to parse the startDate string
+                      if (task.startDate === todayStr) {
+                        return true; // Explicitly for today
+                      }
+                      
+                      // Check if it's from the past (assuming MMM d format)
+                      const taskDate = new Date(task.startDate);
+                      if (!isNaN(taskDate.getTime())) {
+                        return isBefore(taskDate, day.date);
+                      }
+                    } catch (e) {
+                      // If we can't parse the date, assume it should be shown
+                      return true;
+                    }
+                  }
+                  
+                  // Tasks with no start date also show under today
+                  return true;
+                }
+                
+                // For future days, we already have the correct logic
                 if (!isTodayDay && !isPastDay) {
-                  // For future days, include tasks with matching startDate
                   const dayStr = format(day.date, "MMM d");
                   
                   // Match by startDate string
@@ -679,19 +711,7 @@ function CategoryColumn({
                   return false;
                 }
                 
-                // For today, also show tasks with no due date or due today
-                if (isTodayDay) {
-                  // Always show tasks with today as the due date
-                  if (task.dueDate && format(new Date(task.dueDate), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")) {
-                    return true;
-                  }
-                  
-                  // For today, also show tasks with no due date
-                  if (!task.dueDate) {
-                    return true;
-                  }
-                }
-                
+                // Past days should not show incomplete tasks
                 return false;
               });
               

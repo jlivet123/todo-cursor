@@ -6,6 +6,41 @@ import { type Task, getTasks, saveTask, deleteTaskFromSupabase, saveTasks } from
 import { useAuth } from "@/lib/auth-context"
 import { isSupabaseConfigured, getSupabaseClient } from "@/lib/supabase"
 
+// Helper to ensure consistent date object creation
+function ensureDateObj(dateStr: string | undefined): Date | undefined {
+  if (!dateStr) return undefined;
+  
+  try {
+    // Try parsing as a standard date string first
+    const dateObj = new Date(dateStr);
+    if (!isNaN(dateObj.getTime())) {
+      return dateObj;
+    }
+    
+    // Try parsing as "MMM d" format (e.g., "May 20")
+    const parts = dateStr.split(' ');
+    if (parts.length === 2) {
+      const month = parts[0];
+      const day = parseInt(parts[1], 10);
+      
+      if (!isNaN(day)) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const monthIndex = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+          .findIndex(m => m.toLowerCase() === month.toLowerCase());
+        
+        if (monthIndex !== -1) {
+          return new Date(year, monthIndex, day);
+        }
+      }
+    }
+  } catch (e) {
+    console.error(`Error parsing date string: ${dateStr}`, e);
+  }
+  
+  return undefined;
+}
+
 interface DayWithTasks {
   date: Date
   tasks: Task[]
@@ -64,6 +99,25 @@ const logTaskAssignments = (days: DayWithTasks[]) => {
   });
 };
 
+// Debug function to track why a task is assigned to a specific day
+function debugTaskAssignment(task: Task, dayDate: Date, reason: string, isAssigned: boolean) {
+  if (process.env.NODE_ENV !== 'production') {
+    const dateStr = format(dayDate, "yyyy-MM-dd");
+    console.log(
+      `Task "${task.text.substring(0, 20)}${task.text.length > 20 ? '...' : ''}" (ID: ${task.id.slice(0, 6)}...)
+      ${isAssigned ? 'ASSIGNED TO' : 'NOT ASSIGNED TO'} ${dateStr}
+      Reason: ${reason}
+      Category: ${task.category}
+      Completed: ${task.completed}
+      Start date: ${task.startDate}
+      Due date: ${task.dueDate}
+      Completion date: ${task.completionDate}`
+    );
+  }
+}
+
+// Debugging function to log date comparison details
+
 export function useTasks() {
   const [days, setDays] = useState<DayWithTasks[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -84,52 +138,12 @@ export function useTasks() {
         
         // Make sure we have date objects for all task dates
         tasks.forEach(task => {
-          // Make sure we have date objects for all task dates
           if (task.startDate && !task.startDateObj) {
-            try {
-              // First try to parse as "MMM d" format
-              const dateParts = task.startDate.split(' ');
-              if (dateParts.length === 2) {
-                const month = dateParts[0];
-                const day = parseInt(dateParts[1], 10);
-                
-                if (!isNaN(day)) {
-                  // Create a date in the current year (or next year if the date has already passed)
-                  const now = new Date();
-                  const year = now.getFullYear();
-                  const monthIndex = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-                    .findIndex(m => m.toLowerCase() === month.toLowerCase());
-                  
-                  if (monthIndex !== -1) {
-                    task.startDateObj = new Date(year, monthIndex, day);
-                    // If the date is in the past, assume it's for next year
-                    if (isBefore(task.startDateObj, startOfToday()) && !isToday(task.startDateObj)) {
-                      task.startDateObj = new Date(year + 1, monthIndex, day);
-                    }
-                  }
-                }
-              } else {
-                // Try parsing as a regular date string
-                const dateObj = new Date(task.startDate);
-                if (!isNaN(dateObj.getTime())) {
-                  task.startDateObj = dateObj;
-                }
-              }
-            } catch (e) {
-              console.error(`Error parsing startDate for task ${task.id}:`, e);
-            }
+            task.startDateObj = ensureDateObj(task.startDate);
           }
           
-          // Do the same for completion date
           if (task.completionDate && !task.completionDateObj) {
-            try {
-              const dateObj = new Date(task.completionDate);
-              if (!isNaN(dateObj.getTime())) {
-                task.completionDateObj = dateObj;
-              }
-            } catch (e) {
-              console.error(`Error parsing completionDate for task ${task.id}:`, e);
-            }
+            task.completionDateObj = ensureDateObj(task.completionDate);
           }
         });
         
@@ -258,28 +272,39 @@ export function useTasks() {
             const todaysAssignedTasks = tasks.filter(task => {
               // Only include tasks where the startDate exactly matches today's date string
               if (task.startDate === dateStr && !task.completed) {
+                console.log(`Task ${task.text} matches today's date (${dateStr})`);
                 return true;
               }
               
               // Or if startDateObj is available and matches today
               if (task.startDateObj && !task.completed) {
-                return isToday(task.startDateObj);
+                const isOnToday = isToday(task.startDateObj);
+                if (isOnToday) console.log(`Task ${task.text} matches today via startDateObj`);
+                return isOnToday;
               }
               
               return false;
             });
             
             // 2. Incomplete tasks from past dates (rollover)
-            // We've already calculated these above
+            console.log(`Adding ${incompletePastTasks.length} incomplete past tasks to today`);
+            for (const task of incompletePastTasks) {
+              console.log(`Rolling over past task to today: ${task.text} (${task.startDate})`);
+            }
             
             // 3. Tasks completed today
             const completedToday = tasks.filter(task => {
+              if (!task.completed) return false; // Only show completed tasks here
+              
               if (task.completionDateObj) {
                 const completionDate = new Date(task.completionDateObj);
-                return completionDate.getFullYear() === date.getFullYear() &&
-                       completionDate.getMonth() === date.getMonth() &&
-                       completionDate.getDate() === date.getDate();
+                const matches = completionDate.getFullYear() === date.getFullYear() &&
+                               completionDate.getMonth() === date.getMonth() &&
+                               completionDate.getDate() === date.getDate();
+                if (matches) console.log(`Task ${task.text} was completed today`);
+                return matches;
               }
+              
               if (task.completionDate) {
                 if (task.completionDate === dateStr) return true;
                 try {
@@ -297,13 +322,17 @@ export function useTasks() {
             // Combine all tasks for today, with no duplicates
             const todayTaskMap = new Map<string, Task>();
             
-            // Add in order of priority (completed tasks will override incomplete)
+            // Add in priority order (completed tasks will override incomplete)
             [...todaysAssignedTasks, ...incompletePastTasks, ...completedToday].forEach(task => {
               todayTaskMap.set(task.id, task);
             });
             
             dayTasks = Array.from(todayTaskMap.values());
             
+            console.log(`Today has ${dayTasks.length} tasks total`);
+            console.log(`- ${todaysAssignedTasks.length} tasks assigned to today`);
+            console.log(`- ${incompletePastTasks.length} incomplete tasks from past`);
+            console.log(`- ${completedToday.length} tasks completed today`);
           } else {
             // FUTURE DAYS: Only include tasks explicitly for this day + completed on this day
             
@@ -331,7 +360,6 @@ export function useTasks() {
               // For incomplete tasks, check if they start on this day
               // First check startDate string match - most common format
               if (task.startDate === dateStr) {
-                debugDateComparison(task, date, dateStr, "startDate string", true);
                 console.log(`Task ${task.text} matched future day ${dateStr} by string comparison`);
                 return true;
               }
@@ -341,7 +369,6 @@ export function useTasks() {
                 try {
                   const taskDateStr = format(task.startDateObj, "MMM d");
                   const matches = taskDateStr === dateStr;
-                  debugDateComparison(task, date, dateStr, "startDateObj", matches);
                   if (matches) {
                     console.log(`Task ${task.text} matched future day ${dateStr} by date object comparison`);
                   }
@@ -359,7 +386,6 @@ export function useTasks() {
                   if (!isNaN(dueDate.getTime())) {
                     const dueDateStr = format(dueDate, "MMM d");
                     const matches = dueDateStr === dateStr;
-                    debugDateComparison(task, date, dateStr, "dueDate", matches);
                     if (matches) {
                       console.log(`Task ${task.text} matched future day ${dateStr} by due date comparison`);
                     }
@@ -368,7 +394,6 @@ export function useTasks() {
                 } catch (e) { /* Ignore parsing errors */ }
               }
               
-              debugDateComparison(task, date, dateStr, "no match found", false);
               // No match found
               return false;
             });
@@ -864,15 +889,15 @@ export function useTasks() {
         console.log(`Moving task to day ${toDayIndex}, setting startDate to ${formattedDate}`);
         
         updatedTask.startDate = formattedDate;
-        updatedTask.startDateObj = new Date(targetDate);
+        updatedTask.startDateObj = new Date(targetDate); // Ensure we create a proper date object
         updatedTask.dueDate = isoDate;
         
         // Log the updated task for debugging
-        console.log("Updated task:", {
+        console.log("Updated task dates:", {
           id: updatedTask.id,
-          text: updatedTask.text,
+          text: updatedTask.text.substring(0, 30),
           startDate: updatedTask.startDate,
-          startDateObj: updatedTask.startDateObj,
+          startDateObj: updatedTask.startDateObj ? format(updatedTask.startDateObj, 'yyyy-MM-dd') : 'undefined',
           dueDate: updatedTask.dueDate
         });
       }
