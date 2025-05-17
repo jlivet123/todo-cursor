@@ -1,8 +1,22 @@
 "use client"
 
+// Extend the Window interface to include our custom property
+declare global {
+  interface Window {
+    lastTaskMoveTime?: number;
+  }
+}
+
 import React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { format, isToday, isWeekend, isBefore } from "date-fns"
+
+// Extend the Window interface to include our custom property
+declare global {
+  interface Window {
+    lastTaskMoveTime?: number;
+  }
+}
 import {
   Plus,
   ChevronDown,
@@ -603,7 +617,6 @@ function CategoryColumn({
         
         // If dropping on a different column or day, move the task
         if (dragColumnType !== columnType || dragDayIndex !== dayIndex) {
-          console.log(`Dropping task ${taskId} into ${columnType} column of day ${dayIndex}`);
           
           // IMPORTANT: Wait for the moveTask operation to complete before returning
           const success = await moveTask(
@@ -1016,17 +1029,8 @@ function DayColumn({
   
   // Debug log to check tasks for this day
   const debugDate = format(day.date, "yyyy-MM-dd");
-  console.log(`Day ${debugDate} (${dayIndex}) has ${day.tasks.length} tasks:`, 
-    day.tasks.map(t => ({
-      id: t.id.slice(0, 6),
-      text: t.text,
-      category: t.category,
-      startDate: t.startDate,
-      dueDate: t.dueDate
-    }))
-  );
-  console.log(`  Personal: ${personalTasks.length}, Work: ${workTasks.length}`);
-
+  // Removed unused debug code that was causing a syntax error
+  
   return (
     <div
       className={cn(
@@ -1104,7 +1108,20 @@ function DayColumn({
 // Tasks main component
 export default function Tasks() {
   const [localLoading, setLocalLoading] = useState(true);
-  const { days, isLoading, error, refreshTasks, updateTask, deleteTask, moveTask: moveTaskFromHook } = useTasks();
+  const { 
+    days, 
+    isLoading, 
+    error, 
+    refreshTasks, 
+    updateTask, 
+    deleteTask, 
+    moveTask: moveTaskFromHook 
+  } = useTasks();
+  
+  // Initialize window.lastTaskMoveTime if it doesn't exist
+  if (typeof window !== 'undefined' && window.lastTaskMoveTime === undefined) {
+    window.lastTaskMoveTime = 0;
+  }
   const { user } = useAuth();
   const router = useRouter();
   
@@ -1150,10 +1167,33 @@ export default function Tasks() {
       return false;
     }
     
-    try {
-      // Call the moveTask function from the hook
-      // The moveTaskFromHook updates the state internally
-      await moveTaskFromHook(
+    try { 
+      // Set the lastTaskMoveTime to prevent auto-refresh
+      window.lastTaskMoveTime = Date.now();
+      
+      // Type assertion for the moveTaskFromHook function
+      const moveTaskFn = moveTaskFromHook as (
+        dragIndex: number,
+        hoverIndex: number,
+        fromDayIndex: number,
+        toDayIndex: number,
+        fromColumnType: "personal" | "work",
+        toColumnType: "personal" | "work",
+        taskId?: string
+      ) => Promise<Task | null>;
+      
+      console.log('Moving task with params:', {
+        dragIndex,
+        hoverIndex,
+        fromDayIndex,
+        toDayIndex,
+        fromColumnType,
+        toColumnType,
+        taskId
+      });
+      
+      // Call the function from the hook
+      const result = await moveTaskFn(
         dragIndex,
         hoverIndex,
         fromDayIndex, 
@@ -1161,11 +1201,26 @@ export default function Tasks() {
         fromColumnType,
         toColumnType,
         taskId
-      );
+      ).catch(err => {
+        console.error('Error in moveTask:', err);
+        throw err; // Re-throw to be caught by the outer catch
+      });
+      
+      if (!result) {
+        const errorMsg = 'Failed to move task: No result returned from moveTask';
+        console.error(errorMsg);
+        showNotification(errorMsg, "error");
+        return false;
+      }
       
       // Show success notification for important moves (day changes)
-      if (fromDayIndex !== toDayIndex) {
+      if (fromDayIndex !== toDayIndex || fromColumnType !== toColumnType) {
         showNotification("Task moved successfully", "success");
+        
+        // After 3 seconds, do a refresh to ensure everything is in sync
+        setTimeout(() => {
+          refreshTasks();
+        }, 3000);
       }
       
       return true;
@@ -1179,6 +1234,13 @@ export default function Tasks() {
   // State for day columns
   const [visibleDays, setVisibleDays] = useState(days);
   const [currentDayIndex, setCurrentDayIndex] = useState(0);
+  
+  // Log when days change
+  useEffect(() => {
+    if (days && days.length > 0) {
+     setVisibleDays(days);
+    }
+  }, [days]);
   
   // State for new task input
   const [showNewTaskInput, setShowNewTaskInput] = useState(false);
@@ -1228,10 +1290,7 @@ export default function Tasks() {
     if (days && days.length > 0) {
       // Always update visibleDays when days changes, immediately
       setVisibleDays(days);
-      
-      // Additional logging to help debugging
-      console.log("Synchronized visibleDays with days from hook");
-    }
+     }
   }, [days]);
   
   // Custom refresh function to update UI without showing loading state
@@ -1256,19 +1315,17 @@ export default function Tasks() {
   const handleTaskClick = (taskId: string) => {
     // Find the task in all days
     for (const day of days) {
-      const task = day.tasks.find((t) => t.id === taskId)
+      const task = day.tasks.find((t) => t.id === taskId);
       if (task) {
-        setSelectedTask(task)
-        setIsTaskModalOpen(true)
-        return
+        setSelectedTask(task);
+        setIsTaskModalOpen(true);
+        return;
       }
     }
   }
   
   // Function to handle toggling task completion
-  const handleToggleCompletion = (taskId: string) => {
-    console.log("Toggle completion for task:", taskId)
-    
+  const handleToggleCompletion = (taskId: string) => {    
     // Find the task in all days
     let taskToUpdate: Task | null = null
     let taskDay: { date: Date; tasks: Task[]; isPast: boolean } | null = null
