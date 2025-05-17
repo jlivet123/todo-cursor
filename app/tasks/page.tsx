@@ -650,14 +650,46 @@ function CategoryColumn({
                 // Don't include overdue tasks in to-dos (they're in their own section)
                 if (task.dueDate && isBefore(new Date(task.dueDate), day.date) && isTodayDay) return false;
                 
-                // Always show tasks with today as the due date
-                if (task.dueDate && format(new Date(task.dueDate), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")) {
-                  return true;
+                // If we're dealing with a future day
+                if (!isTodayDay && !isPastDay) {
+                  // For future days, include tasks with matching startDate
+                  const dayStr = format(day.date, "MMM d");
+                  
+                  // Match by startDate string
+                  if (task.startDate === dayStr) {
+                    return true;
+                  }
+                  
+                  // Match by startDateObj if available
+                  if (task.startDateObj && !isNaN(task.startDateObj.getTime())) {
+                    const taskDateStr = format(task.startDateObj, "MMM d");
+                    return taskDateStr === dayStr;
+                  }
+                  
+                  // Match by dueDate if it's on this day
+                  if (task.dueDate) {
+                    try {
+                      const dueDate = new Date(task.dueDate);
+                      if (!isNaN(dueDate.getTime())) {
+                        return format(dueDate, "MMM d") === dayStr;
+                      }
+                    } catch (e) { /* Ignore parsing errors */ }
+                  }
+                  
+                  return false;
                 }
                 
-                // For today, also show tasks with no due date
-                if (!task.dueDate && isTodayDay) {
-                  return true;
+                // For today, also show tasks with no due date or due today
+                if (isTodayDay) {
+                  // Always show tasks with today as the due date
+                  if (task.dueDate && format(new Date(task.dueDate), "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")) {
+                    return true;
+                  }
+                  
+                  // For today, also show tasks with no due date
+                  if (!task.dueDate) {
+                    return true;
+                  }
                 }
                 
                 return false;
