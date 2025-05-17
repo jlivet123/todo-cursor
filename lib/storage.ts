@@ -17,17 +17,20 @@ export interface Task {
   subtasks: Subtask[]
   timeDisplay?: string
   description?: string
-  startDate?: string
-  dueDate?: string
+  // Date fields in ISO format (YYYY-MM-DD)
+  startDate: string
+  dueDate: string
+  position?: number
+  // Completion tracking
+  completionDate?: string           // ISO format (YYYY-MM-DD)
+  completionDateMMMD?: string      // Legacy format (MMM d)
+  completionDateObj?: Date | null  // Date object for calculations
+  // Day field for filtering
+  day?: string                     // ISO format (YYYY-MM-DD)
   startDateObj?: Date | null
   dueDateObj?: Date | null
-  position?: number
-  completionDate?: string
-  completionDateMMMD?: string
-  completionDateObj?: Date | null
 }
 
-// Update the StickyNote interface to include category
 export interface StickyNote {
   id: string
   content: string
@@ -56,9 +59,7 @@ const TASKS_STORAGE_KEY = "taskmaster_tasks"
 const USER_STORAGE_KEY = "taskmaster_user"
 const INITIALIZED_KEY = "taskmaster_initialized"
 const DECISION_MATRIX_STORAGE_KEY = "taskmaster_decision_matrix"
-// Add this constant after the existing constants
 const STICKY_NOTES_STORAGE_KEY = "taskmaster_sticky_notes"
-
 
 // Helper function to check if we're in a browser environment
 const isBrowser = () => typeof window !== "undefined"
@@ -139,36 +140,55 @@ export async function getTasks(): Promise<Task[]> {
       let startDateObj: Date | null = null;
       let dueDateObj: Date | null = null;
       
-      // Format startDate and dueDate in "MMM d" format if we have valid date objects
-      let formattedStartDate = task.start_date;
-      let formattedDueDate = task.due_date;
+      // Initialize with default values
+      let formattedStartDate = '';
+      let formattedDueDate = '';
       
-      // Safely create date objects with validation
+      // Process start date
       try {
-        if (task.start_date && task.start_date.trim() !== '') {
-          startDateObj = new Date(task.start_date + 'T00:00:00');
-          if (!isNaN(startDateObj.getTime())) {
-            formattedStartDate = format(startDateObj, "MMM d");
-          } else {
-            startDateObj = null; // Reset if invalid date
+        if (task.start_date) {
+          // If it's already in ISO format, use it directly
+          if (typeof task.start_date === 'string' && task.start_date.includes('-')) {
+            const parsedDate = new Date(task.start_date);
+            if (!isNaN(parsedDate.getTime())) {
+              startDateObj = parsedDate;
+              formattedStartDate = task.start_date; // Keep original ISO format
+            }
+          }
+          // Handle case where start_date might be a date object
+          else if (task.start_date instanceof Date) {
+            if (!isNaN(task.start_date.getTime())) {
+              startDateObj = task.start_date;
+              formattedStartDate = format(task.start_date, 'yyyy-MM-dd');
+            }
           }
         }
       } catch (e) {
-        console.error(`Error parsing startDate for task ${task.id}:`, e);
+        console.error(`Error processing startDate for task ${task.id}:`, e);
         startDateObj = null;
       }
       
+      // Process due date
       try {
-        if (task.due_date && task.due_date.trim() !== '') {
-          dueDateObj = new Date(task.due_date + 'T00:00:00');
-          if (!isNaN(dueDateObj.getTime())) {
-            formattedDueDate = format(dueDateObj, "MMM d");
-          } else {
-            dueDateObj = null; // Reset if invalid date
+        if (task.due_date) {
+          // If it's already in ISO format, use it directly
+          if (typeof task.due_date === 'string' && task.due_date.includes('-')) {
+            const parsedDate = new Date(task.due_date);
+            if (!isNaN(parsedDate.getTime())) {
+              dueDateObj = parsedDate;
+              formattedDueDate = task.due_date; // Keep original ISO format
+            }
+          }
+          // Handle case where due_date might be a date object
+          else if (task.due_date instanceof Date) {
+            if (!isNaN(task.due_date.getTime())) {
+              dueDateObj = task.due_date;
+              formattedDueDate = format(task.due_date, 'yyyy-MM-dd');
+            }
           }
         }
       } catch (e) {
-        console.error(`Error parsing dueDate for task ${task.id}:`, e);
+        console.error(`Error processing dueDate for task ${task.id}:`, e);
         dueDateObj = null;
       }
       
@@ -273,6 +293,39 @@ export async function saveTask(task: Task): Promise<Task | null> {
       }
     }
     
+    // Helper function to parse and format dates consistently
+    const formatDateForDatabase = (dateString: string | undefined): string | null => {
+      if (!dateString) return null;
+      
+      try {
+        // If it's already in ISO format, return as is
+        if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          return dateString;
+        }
+        
+        // Handle MMM d format (e.g., "May 9")
+        if (dateString.match(/^[A-Za-z]{3} \d{1,2}$/)) {
+          const currentYear = new Date().getFullYear();
+          const date = new Date(`${dateString}, ${currentYear}`);
+          if (!isNaN(date.getTime())) {
+            return format(date, 'yyyy-MM-dd');
+          }
+        }
+        
+        // Try parsing as a date string
+        const parsedDate = new Date(dateString);
+        if (!isNaN(parsedDate.getTime())) {
+          return format(parsedDate, 'yyyy-MM-dd');
+        }
+        
+        console.warn('Could not parse date:', dateString);
+        return null;
+      } catch (e) {
+        console.error('Error formatting date:', dateString, e);
+        return null;
+      }
+    };
+
     // Prepare task data for Supabase - only include fields that exist in the database
     const taskData = {
       id: task.id,
@@ -282,10 +335,10 @@ export async function saveTask(task: Task): Promise<Task | null> {
       time: task.time,
       time_display: task.timeDisplay,
       description: task.description,
-      start_date: task.startDate,
-      due_date: task.dueDate,
+      start_date: formatDateForDatabase(task.startDate),
+      due_date: formatDateForDatabase(task.dueDate),
       position: task.position || 0,
-      completion_date: task.completionDate,
+      completion_date: formatDateForDatabase(task.completionDate),
       // Don't include completion_date_mmmd as it doesn't exist in the database
       user_id: userId,
     }
@@ -294,61 +347,84 @@ export async function saveTask(task: Task): Promise<Task | null> {
     console.log(`Saving task to Supabase: ${task.text} (ID: ${task.id}) with data:`, taskData);
 
     // Insert or update task
-    const { data, error } = await supabase.from("tasks").upsert(taskData).select().single()
-
-    if (error) throw error
+    console.log('Task data being saved:', JSON.stringify(taskData, null, 2));
     
-    // Map the returned data from Supabase to our Task object
-    const savedTask = {
-      ...task,
-      id: data.id,
-      text: data.text,
-      completed: data.completed,
-      category: data.category,
-      time: data.time,
-      timeDisplay: data.time_display,
-      description: data.description,
-      startDate: data.start_date,
-      dueDate: data.due_date,
-      position: data.position,
-      completionDate: data.completion_date,
-      completionDateMMMD: data.completion_date_mmmd
+    if (!supabase) {
+      throw new Error('Supabase client is not available');
     }
+    
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .upsert(taskData)
+        .select()
+        .single();
 
-    console.log(`Task saved to Supabase: ${savedTask.text} (ID: ${savedTask.id})`);
-
-    // Process subtasks if they exist
-    // Note: For task moves between days, we now use a direct update in use-tasks.ts
-    // which avoids calling this function altogether for simple date/category changes
-    if (task.subtasks && task.subtasks.length > 0) {
-      try {
-        // Prepare subtask data
-        const subtaskData = task.subtasks.map((subtask, index) => ({
-          id: subtask.id,
-          task_id: savedTask.id,
-          text: subtask.text,
-          completed: subtask.completed,
-          position: index,
-        }))
-
-        // Use upsert instead of delete+insert to avoid conflicts
-        const { error: subtaskError } = await supabase
-          .from("subtasks")
-          .upsert(subtaskData, { onConflict: 'id' })
-        
-        if (subtaskError) {
-          console.error("Error upserting subtasks:", subtaskError);
-          // Even if there's an error with subtasks, continue with the task
-        }
-      } catch (subtaskError) {
-        console.error("Error handling subtasks:", subtaskError);
+      if (error) {
+        console.error('Supabase upsert error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
       }
-    }
-    
-    // Always include the subtasks in the returned task object
-    savedTask.subtasks = task.subtasks || [];
+      
+      // Map the returned data from Supabase to our Task object
+      const savedTask: Task = {
+        ...task,
+        id: data.id,
+        text: data.text,
+        completed: data.completed,
+        category: data.category,
+        time: data.time,
+        timeDisplay: data.time_display,
+        description: data.description,
+        startDate: data.start_date,
+        dueDate: data.due_date,
+        position: data.position,
+        completionDate: data.completion_date,
+        completionDateMMMD: data.completion_date_mmmd,
+        subtasks: task.subtasks || [],
+        startDateObj: data.start_date ? new Date(data.start_date) : null,
+        dueDateObj: data.due_date ? new Date(data.due_date) : null,
+        completionDateObj: data.completion_date ? new Date(data.completion_date) : null
+      };
+      
+      console.log(`Task saved to Supabase: ${savedTask.text} (ID: ${savedTask.id})`);
+      
+      // Process subtasks if they exist
+      if (task.subtasks && task.subtasks.length > 0) {
+        try {
+          // Prepare subtask data
+          const subtaskData = task.subtasks.map((subtask, index) => ({
+            id: subtask.id,
+            task_id: savedTask.id,
+            text: subtask.text,
+            completed: subtask.completed,
+            position: index,
+          }));
 
-    return savedTask
+          // Use upsert instead of delete+insert to avoid conflicts
+          const { error: subtaskError } = await supabase
+            .from("subtasks")
+            .upsert(subtaskData, { onConflict: 'id' });
+          
+          if (subtaskError) {
+            console.error("Error upserting subtasks:", subtaskError);
+            // Even if there's an error with subtasks, continue with the task
+          }
+        } catch (subtaskError) {
+          console.error("Error handling subtasks:", subtaskError);
+        }
+      }
+      
+      return savedTask;
+
+    } catch (error) {
+      console.error("Error in saveTask:", error);
+      throw error;
+    }
   } catch (error) {
     console.error("Error saving task to Supabase:", error)
 

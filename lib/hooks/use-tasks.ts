@@ -59,65 +59,90 @@ export function useTasks() {
 
   // Process tasks into days with proper date handling
   const processTasksIntoDays = (tasks: Task[]) => {
-    const today = startOfToday()
-    const newDays: DayWithTasks[] = []
+    const today = startOfToday();
+    const newDays: DayWithTasks[] = [];
     
+    // Helper function to parse and compare dates
+    const isSameDay = (date1: Date, date2: Date) => {
+      return (
+        date1.getFullYear() === date2.getFullYear() &&
+        date1.getMonth() === date2.getMonth() &&
+        date1.getDate() === date2.getDate()
+      );
+    };
+
     // Create 7 days (today + 6 days)
     for (let i = 0; i < 7; i++) {
-      const date = addDays(today, i)
-      const dateStr = format(date, 'yyyy-MM-dd')
-      const dateMMMD = format(date, 'MMM d')
+      const currentDate = addDays(today, i);
+      const currentDateStr = format(currentDate, 'yyyy-MM-dd');
       
       // Filter tasks for this day
       const dayTasks = tasks.filter(task => {
-        const currentDate = date; // The date we're currently processing (today + i days)
-        const currentDateStr = format(currentDate, 'yyyy-MM-dd');
-        const currentDateMMMD = format(currentDate, 'MMM d');
-        
-        // For completed tasks, check if they were completed on this exact day
-        if (task.completed) {
-          const completedDate = task.completionDate || task.completionDateMMMD;
-          return completedDate === currentDateStr || completedDate === currentDateMMMD;
-        }
-        
-        // For incomplete tasks
-        const dueDate = task.dueDate;
-        const startDate = task.startDate;
-        
-        // Parse dates if they exist
-        const taskDueDate = dueDate ? new Date(dueDate) : null;
-        const taskStartDate = startDate ? new Date(startDate) : null;
-        
-        // Check if task should be visible on this date
-        const isStartDateMatch = taskStartDate ? 
-          (format(taskStartDate, 'yyyy-MM-dd') === currentDateStr || 
-          format(taskStartDate, 'MMM d') === currentDateMMMD) : false;
-          
-        const isDueDateMatch = taskDueDate ? 
-          (format(taskDueDate, 'yyyy-MM-dd') === currentDateStr || 
-          format(taskDueDate, 'MMM d') === currentDateMMMD) : false;
-        
-        // Check if task should be shown today (i === 0)
-        if (i === 0) { // Today's column
-          // Only show if task has started (start date is today or in the past)
-          // and either has no due date or is due today or in the future
-          const hasStarted = !taskStartDate || (taskStartDate <= currentDate);
-          const notOverdue = !taskDueDate || (taskDueDate >= currentDate);
-          
-          if (hasStarted && notOverdue) {
-            return true;
+        try {
+          // For completed tasks, check completion date
+          if (task.completed) {
+            if (!task.completionDate && !task.completionDateMMMD) return false;
+            
+            // Check ISO format first
+            if (task.completionDate) {
+              const completionDate = new Date(task.completionDate);
+              if (!isNaN(completionDate.getTime()) && isSameDay(completionDate, currentDate)) {
+                return true;
+              }
+            }
+            
+            // Check MMM d format if needed
+            if (task.completionDateMMMD) {
+              try {
+                const parsedDate = new Date(`${task.completionDateMMMD}, ${currentDate.getFullYear()}`);
+                if (!isNaN(parsedDate.getTime()) && isSameDay(parsedDate, currentDate)) {
+                  return true;
+                }
+              } catch (e) {
+                console.error('Error parsing completion date:', task.completionDateMMMD, e);
+              }
+            }
+            return false;
           }
+          
+          // For incomplete tasks
+          if (i === 0) { // Today's column
+            // For today, show:
+            // 1. Tasks that have started (or have no start date)
+            // 2. Tasks that are overdue (due date is before today)
+            // 3. Tasks that are due today or have no due date
+            const hasStarted = !task.startDate || 
+              (task.startDate && new Date(task.startDate) <= currentDate);
+            
+            // Check if task is overdue (due date is in the past and not today)
+            const isOverdue = task.dueDate && 
+              new Date(task.dueDate) < today && 
+              !isToday(new Date(task.dueDate));
+            
+            // Check if task is due today or has no due date
+            const isDueTodayOrNoDue = !task.dueDate || isToday(new Date(task.dueDate));
+            
+            return hasStarted && (isOverdue || isDueTodayOrNoDue);
+          }
+          
+          // For future days, only show tasks with matching start date
+          if (task.startDate) {
+            const taskStartDate = new Date(task.startDate);
+            return !isNaN(taskStartDate.getTime()) && isSameDay(taskStartDate, currentDate);
+          }
+          
+          return false;
+        } catch (e) {
+          console.error('Error processing task:', task.id, e);
+          return false;
         }
-        
-        // For any day, only show if it's the exact start date or due date
-        return isStartDateMatch || isDueDateMatch;
       });
       
       newDays.push({
-        date,
+        date: currentDate,
         tasks: dayTasks,
-        isPast: isBefore(date, today) && !isToday(date)
-      })
+        isPast: isBefore(currentDate, today) && !isToday(currentDate)
+      });
     }
     
     setDays(newDays)
@@ -126,19 +151,26 @@ export function useTasks() {
   // Create a task
   const createTask = async (text: string, dayIndex: number, category: 'work' | 'personal') => {
     try {
-      const newTask: Omit<Task, 'id'> = {
+      const targetDate = days[dayIndex].date;
+      const isoDateString = format(targetDate, "yyyy-MM-dd");
+      
+      // Create a complete task with a temporary ID that will be replaced by the database
+      const tempId = `temp-${Date.now()}`;
+      const newTask: Task = {
+        id: tempId,
         text,
         completed: false,
         category,
         position: 0,
-        day: format(days[dayIndex].date, "yyyy-MM-dd"),
-        startDate: format(days[dayIndex].date, "MMM d"),
-        dueDate: format(days[dayIndex].date, "yyyy-MM-dd"),
-        startDateObj: new Date(days[dayIndex].date.getTime()),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
+        day: isoDateString,
+        startDate: isoDateString, // Use ISO format
+        dueDate: isoDateString,   // Use ISO format
+        startDateObj: new Date(targetDate), // Keep for backwards compatibility
+        dueDateObj: new Date(targetDate),   // Add for consistency
+        subtasks: []
+      };
       
+      // Save the task (the database will generate a proper ID)
       const savedTask = await saveTask(newTask)
       if (savedTask) {
         setAllTasks(prev => [...prev, savedTask])
@@ -293,19 +325,17 @@ export function useTasks() {
         // Get the target date from the day
         const targetDate = days[toDayIndex].date;
         
-        // For display (MMM d format)
-        updatedTask.startDate = format(targetDate, "MMM d");
+        // Use ISO format (yyyy-MM-dd) for all date fields
+        const isoDateString = format(targetDate, "yyyy-MM-dd");
         
-        // For ISO format (yyyy-MM-dd)
-        updatedTask.dueDate = format(targetDate, "yyyy-MM-dd");
+        // Update all date fields
+        updatedTask.startDate = isoDateString;
+        updatedTask.dueDate = isoDateString;
+        updatedTask.day = isoDateString;
         
-        // Day field for better filtering
-        updatedTask.day = format(targetDate, "yyyy-MM-dd");
-        
-        // Create a clean date object for startDateObj
-        updatedTask.startDateObj = new Date(targetDate.getTime());
-        
-
+        // Create clean date objects for date fields
+        updatedTask.startDateObj = new Date(targetDate);
+        updatedTask.dueDateObj = new Date(targetDate);
       }
 
       // Make sure the task has all necessary fields
@@ -314,12 +344,13 @@ export function useTasks() {
         // Ensure critical fields are present
         id: updatedTask.id,
         category: updatedTask.category,
-        // If moving between days, ensure day and date fields are set
+        // If moving between days, ensure all date fields are properly set
         ...(fromDayIndex !== toDayIndex && {
           day: format(days[toDayIndex].date, "yyyy-MM-dd"),
-          startDate: format(days[toDayIndex].date, "MMM d"),
+          startDate: format(days[toDayIndex].date, "yyyy-MM-dd"),
           dueDate: format(days[toDayIndex].date, "yyyy-MM-dd"),
-          startDateObj: new Date(days[toDayIndex].date.getTime())
+          startDateObj: new Date(days[toDayIndex].date),
+          dueDateObj: new Date(days[toDayIndex].date)
         })
       };
       

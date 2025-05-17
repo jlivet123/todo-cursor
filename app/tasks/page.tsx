@@ -275,6 +275,16 @@ function DraggableTask({
 
   // Format the date for display
   const displayDate = task.dueDate || task.startDate;
+  let formattedDisplayDate = displayDate;
+
+  // Add a proper formatter for ISO dates
+  try {
+    if (displayDate && displayDate.includes("-")) { // Check if it's an ISO format
+      formattedDisplayDate = format(new Date(displayDate), "MMM d, yyyy");
+    }
+  } catch (e) {
+    // Keep original format if parsing fails
+  }
 
   // Truncate description for preview
   const descriptionPreview = task.description
@@ -353,7 +363,7 @@ function DraggableTask({
           {displayDate && (
             <div className="flex items-center">
               <Calendar className="h-3 w-3 mr-1" />
-              {displayDate}
+              {formattedDisplayDate}
             </div>
           )}
 
@@ -728,29 +738,20 @@ function CategoryColumn({
             )}>
             {(() => {
               // Section 1: Overdue
-              const todayStr = format(day.date, "MMM d");
               const isTodayDay = isToday(day.date);
               const overdue = tasks.filter((task) => {
                 // We only show overdue tasks on today's column
                 if (!task.completed && task.dueDate && isTodayDay) {
-                  // Fix date parsing by ensuring year is included
+                  // Parse the due date as ISO format
                   const dueDate = new Date(task.dueDate);
-                  
-                  // If the parsed date is from a different year than the current date,
-                  // it's likely because the year wasn't specified in the string.
-                  // In this case, assume it's the same year as day.date
-                  if (dueDate.getFullYear() < 2020) { // Using 2020 as a safe threshold
-                    dueDate.setFullYear(day.date.getFullYear());
-                  }
-                  
                   const startOfToday = new Date(day.date);
                   
-                  // Reset both to start of day
+                  // Reset both to start of day for accurate comparison
                   dueDate.setHours(0, 0, 0, 0);
                   startOfToday.setHours(0, 0, 0, 0);
                   
-                  // Now compare
-                  return isBefore(dueDate, startOfToday);
+                  // Task is overdue if due date is before today
+                  return dueDate.getTime() < startOfToday.getTime();
                 }
                 return false;
               });
@@ -764,56 +765,39 @@ function CategoryColumn({
               });
               
               // Section 2: To-Dos
-              // Incomplete tasks with startDate or dueDate for that day,
-              // or with no specific date if this is the current day
               const todos = tasks.filter((task) => {
                 // Don't include completed tasks in to-dos
                 if (task.completed) return false;
                 
                 // Don't include overdue tasks in to-dos (they're in their own section)
-                if (task.dueDate && isBefore(new Date(task.dueDate), day.date) && isTodayDay) return false;
-                
-                // For today, we want to show:
-                // 1. Tasks explicitly assigned to today
-                // 2. Incomplete tasks from the past (rollover)
-                if (isTodayDay) {
-                  // Special handling for "Month Day" format dates to handle today's tasks
-                  if (task.startDate) {
-                    // Fix for "Month Day" format - check if it matches today's month/day
-                    const todayMonthDay = format(day.date, "MMM d");
-                    if (task.startDate === todayMonthDay) {
-                      return true; // It's today's task!
-                    }
-                    
-                    try {
-                      // Try existing logic for dates with proper year
-                      // If we have a date object, use it for reliable comparison
-                      if (task.startDateObj) {
-                        // Show tasks from today or earlier
-                        return isBefore(task.startDateObj, day.date) || isToday(task.startDateObj);
-                      }
-                      
-                      // Parse the start date and fix year if needed
-                      const startDate = new Date(task.startDate);
-                      if (startDate.getFullYear() < 2020) {
-                        startDate.setFullYear(day.date.getFullYear());
-                      }
-                      
-                      if (isToday(startDate)) {
-                        return true; // It's today!
-                      }
-                      
-                      // Check if it's from the past
-                      return isBefore(startDate, day.date);
-                    } catch (e) {
-                      // If we can't parse the date, show it today
-                      console.log("Date parsing error:", e);
-                      return true;
-                    }
-                  }
+                if (task.dueDate && isTodayDay) {
+                  const dueDate = new Date(task.dueDate);
+                  const startOfToday = new Date(day.date);
+                  dueDate.setHours(0, 0, 0, 0);
+                  startOfToday.setHours(0, 0, 0, 0);
                   
-                  // Tasks with no start date also show under today
-                  return true;
+                  if (dueDate.getTime() < startOfToday.getTime()) return false;
+                }
+                
+                // For today column
+                if (isTodayDay) {
+                  if (task.startDate) {
+                    const startDate = new Date(task.startDate);
+                    startDate.setHours(0, 0, 0, 0);
+                    
+                    const currentDate = new Date(day.date);
+                    currentDate.setHours(0, 0, 0, 0);
+                    
+                    // Show tasks with start date of today or earlier
+                    return startDate.getTime() <= currentDate.getTime();
+                  }
+                  return true; // Tasks with no start date also show under today
+                }
+                
+                // For future days, only show tasks with matching start date
+                if (!isTodayDay && !isPastDay) {
+                  const dayStr = format(day.date, "yyyy-MM-dd");
+                  return task.startDate === dayStr;
                 }
                 
                 // Rest of your existing filter logic for future days...
@@ -824,22 +808,29 @@ function CategoryColumn({
               const completedTasks = tasks.filter((task) => {
                 if (!task.completed) return false;
                 
-                // Use completionDate if available
-                if (task.completionDate) {
-                  const completionDate = new Date(task.completionDate);
-                  const dayDate = new Date(day.date);
-                  
-                  // Compare year, month, and day
-                  return (
-                    completionDate.getFullYear() === dayDate.getFullYear() &&
-                    completionDate.getMonth() === dayDate.getMonth() &&
-                    completionDate.getDate() === dayDate.getDate()
-                  );
-                }
+                // Check both completionDate formats for maximum compatibility
+                const completionDate = task.completionDate || task.completionDateMMMD;
+                if (!completionDate) return false;
                 
-                // Fallback to completionDateMMMD for legacy support
-                if (task.completionDateMMMD) {
-                  return task.completionDateMMMD === format(day.date, "MMM d");
+                try {
+                  // First try to parse as ISO date
+                  const completionDateObj = new Date(completionDate);
+                  
+                  // If it's a valid date, compare year, month, and day
+                  if (!isNaN(completionDateObj.getTime())) {
+                    const dayDate = new Date(day.date);
+                    return (
+                      completionDateObj.getFullYear() === dayDate.getFullYear() &&
+                      completionDateObj.getMonth() === dayDate.getMonth() &&
+                      completionDateObj.getDate() === dayDate.getDate()
+                    );
+                  }
+                  
+                  // Fallback to string comparison for MMM d format
+                  return completionDate === format(day.date, "MMM d");
+                } catch (e) {
+                  console.error("Error parsing completion date:", e);
+                  return false;
                 }
                 
                 return false;
