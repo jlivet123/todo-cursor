@@ -1,0 +1,48 @@
+# .cursorignore — Todo-Cursor Repository
+
+# Node dependencies
+node_modules/
+
+# Build artifacts
+.next/
+out/
+dist/
+build/
+
+# Environment variables
+.env*
+.env.local
+.env.development
+.env.production
+
+# Debug & logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+turbo.log
+
+# Vercel files
+.vercel/
+
+# TypeScript artifacts
+*.tsbuildinfo
+next-env.d.ts
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Test coverage
+coverage/
+
+# Local database or cache
+.supa/
+.local/
+
+# Cursor metadata (if you ever export AI sessions locally)
+.cursor/
