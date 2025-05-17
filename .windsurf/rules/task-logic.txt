@@ -50,3 +50,16 @@ Dragging to a different column and day updates both start date and category
 
 📂 Column Controls
 Each Work and Personal column is collapsible, providing a clean, focused view.
+
+## Business Logic Guidelines
+- Task Management:
+  - Active tasks appear under their start date; completed tasks appear under their completion date.
+  - Incomplete tasks never show on past days, they always rollover to the current day.  Completed tasks always show on the date completed.  Future tasks show based on the start date of the task.  Due date determines if they are overdue.
+  - Dragging tasks between columns updates the category.  The categories are work and personal and we have a column for each under each day.
+  - Dragging tasks across days updates the start date and category if applicable.  For example, you drag a task from work to personal then the category updates to personal.
+  - Subtasks act as checklists within tasks. Ensure subtask completion syncs with parent task.
+- Data Persistence:
+  - Use Supabase for data storage. Fallback to localStorage for offline/demo mode.
+- Decision Matrix:
+  - Support full CRUD with offline fallback.
+- Prepare for future enhancements: Dashboard, Sticky Notes, Daily Rituals.

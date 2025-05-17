@@ -28,6 +28,9 @@ import {
   Sparkles,
   CalendarCheck,
   ClipboardCheck,
+  XCircle,
+  Check,
+  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -37,6 +40,7 @@ import { TaskModal } from "@/components/task-modal"
 import { DndProvider, useDrag, useDrop, DragPreviewImage } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { useTasks } from "@/lib/hooks/use-tasks"
+
 import { useAuth } from "@/lib/auth-context"
 import { Skeleton } from "@/components/ui/skeleton"
 import { isSupabaseConfigured } from "@/lib/supabase"
@@ -48,6 +52,47 @@ import { PageLayout } from "@/components/page-layout"
 
 // Drag item types
 const ITEM_TYPE = "TASK"
+
+// Notification types
+type NotificationType = 'success' | 'error' | 'info';
+
+interface NotificationProps {
+  message: string;
+  type: NotificationType;
+  onClose: () => void;
+}
+
+// TaskNotification component for providing visual feedback
+function TaskNotification({ message, type, onClose }: NotificationProps) {
+  // Auto-dismiss after 3 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 3000);
+    
+    return () => clearTimeout(timer);
+  }, [onClose]);
+  
+  return (
+    <div className={cn(
+      "fixed bottom-4 right-4 p-4 rounded-md shadow-lg max-w-md z-50 transition-all duration-300 flex items-center gap-3",
+      type === 'success' && "bg-green-800/90 border border-green-600 text-white",
+      type === 'error' && "bg-red-800/90 border border-red-600 text-white",
+      type === 'info' && "bg-blue-800/90 border border-blue-600 text-white"
+    )}>
+      {type === 'success' && <Check className="h-5 w-5 text-green-400" />}
+      {type === 'error' && <XCircle className="h-5 w-5 text-red-400" />}
+      {type === 'info' && <AlertCircle className="h-5 w-5 text-blue-400" />}
+      <p className="flex-1">{message}</p>
+      <button 
+        onClick={onClose}
+        className="text-slate-300 hover:text-white transition-colors"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
 
 // Subtask Item component
 function SubtaskItem({
@@ -89,6 +134,7 @@ function DraggableTask({
   onToggleCompletion,
   onToggleSubtaskCompletion,
   moveTask,
+  updateTask,
   isPastDay,
 }: {
   task: Task
@@ -107,6 +153,7 @@ function DraggableTask({
     toColumnType: "personal" | "work",
     taskId?: string
   ) => void
+  updateTask: (task: Task) => void
   isPastDay: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -165,7 +212,15 @@ function DraggableTask({
         return;
       }
 
-      // Time to actually perform the action
+      // Prevent excessive updates - only call moveTask if we're changing position
+      const isSameLocation = dragDayIndex === dayIndex && 
+                           dragColumnType === columnType && 
+                           dragIndex === hoverIndex;
+      if (isSameLocation) {
+        return;
+      }
+
+      // Only move if a significant change has occurred
       moveTask(
         dragIndex,
         hoverIndex,
@@ -175,6 +230,13 @@ function DraggableTask({
         columnType,
         dragTaskId
       );
+
+      // Update the dragged item's position directly to prevent flickering
+      item.index = hoverIndex;
+      item.dayIndex = dayIndex;
+      item.columnType = columnType;
+      // Note: The actual task update is handled inside the moveTaskImpl function
+      // in the use-tasks.ts hook which calls setAllTasks internally
 
       // Update the dragged item's position directly to prevent flickering
       item.index = hoverIndex;
@@ -223,10 +285,10 @@ function DraggableTask({
     <div
       ref={dragDropRef}
       className={cn(
-        "flex flex-col gap-1 py-2 px-3 rounded-md transition-colors",
+        "flex flex-col gap-1 py-2 px-3 rounded-md transition-all duration-200",
         !isPastDay && !task.completed && "cursor-grab active:cursor-grabbing hover:bg-slate-800",
         (isPastDay || task.completed) && "opacity-75",
-        isDragging && "opacity-40 bg-slate-800 shadow-lg"
+        isDragging && "opacity-50 bg-slate-700 shadow-xl scale-[0.98] border border-slate-500"
       )}
       onClick={(e) => {
         e.stopPropagation();
@@ -326,6 +388,7 @@ function CompactTask({
   onTaskClick,
   onToggleCompletion,
   moveTask,
+  updateTask,
   isPastDay,
 }: {
   task: Task
@@ -343,6 +406,7 @@ function CompactTask({
     toColumnType: "personal" | "work",
     taskId?: string
   ) => void
+  updateTask: (task: Task) => void
   isPastDay: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -372,30 +436,50 @@ function CompactTask({
     },
     hover(item: any, monitor) {
       if (!ref.current || isPastDay || task.completed) {
-        return
+        return;
       }
       
-      const dragTaskId = item.taskId
-      const dragIndex = item.index
-      const dragDayIndex = item.dayIndex
-      const dragColumnType = item.columnType
-      const hoverTaskId = task.id
-      const hoverIndex = index
-      const hoverDayIndex = dayIndex
-      const hoverColumnType = columnType
-
+      const dragTaskId = item.taskId;
+      const dragIndex = item.index;
+      const dragDayIndex = item.dayIndex;
+      const dragColumnType = item.columnType;
+      const hoverIndex = index;
+      
       // Don't replace items with themselves
-      if (dragTaskId === hoverTaskId) {
-        return
+      if (dragTaskId === task.id) {
+        return;
       }
-
-      // Move the task immediately
-      moveTask(dragIndex, hoverIndex, dragDayIndex, hoverDayIndex, dragColumnType, hoverColumnType, dragTaskId)
+      
+      // Get rectangle on screen
+      const hoverBoundingRect = ref.current.getBoundingClientRect();
+      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+      const clientOffset = monitor.getClientOffset();
+      const hoverClientY = clientOffset!.y - hoverBoundingRect.top;
+      
+      // Only perform the move when the mouse has crossed half of the item's height
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
+        return;
+      }
+      
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
+        return;
+      }
+      
+      // Move the task
+      moveTask(
+        dragIndex,
+        hoverIndex,
+        dragDayIndex,
+        dayIndex,
+        dragColumnType,
+        columnType,
+        dragTaskId
+      );
       
       // Update the dragged item's position
-      item.index = hoverIndex
-      item.dayIndex = hoverDayIndex
-      item.columnType = hoverColumnType
+      item.index = hoverIndex;
+      item.dayIndex = dayIndex;
+      item.columnType = columnType;
     },
     canDrop: () => !isPastDay && !task.completed, // Disable dropping for past days and completed tasks
   })
@@ -453,6 +537,7 @@ function CategoryColumn({
   onToggleCompletion,
   onToggleSubtaskCompletion,
   moveTask,
+  updateTask,
   showNewTaskInput,
   newTaskText,
   onNewTaskTextChange,
@@ -483,6 +568,7 @@ function CategoryColumn({
     toColumnType: "personal" | "work",
     taskId?: string
   ) => void
+  updateTask: (task: Task) => void
   showNewTaskInput: boolean
   newTaskText: string
   onNewTaskTextChange: (text: string) => void
@@ -510,28 +596,31 @@ function CategoryColumn({
     collect: (monitor) => ({
       isOver: monitor.isOver(),
     }),
-    drop: (item: any, monitor) => {
+    drop: async (item: any, monitor) => {
+      // Only process if not already handled and not in a past day
       if (!monitor.didDrop() && !isPastDay) {
-        const dragTaskId = item.taskId;
-        const dragIndex = item.index;
-        const dragDayIndex = item.dayIndex;
-        const dragColumnType = item.columnType;
+        const { taskId, index: dragIndex, dayIndex: dragDayIndex, columnType: dragColumnType } = item;
         
         // If dropping on a different column or day, move the task
         if (dragColumnType !== columnType || dragDayIndex !== dayIndex) {
-          moveTask(
+          console.log(`Dropping task ${taskId} into ${columnType} column of day ${dayIndex}`);
+          
+          // IMPORTANT: Wait for the moveTask operation to complete before returning
+          const success = await moveTask(
             dragIndex,
             0, // Insert at the beginning of the target column
             dragDayIndex,
             dayIndex,
             dragColumnType,
             columnType,
-            dragTaskId
+            taskId  // Always pass the taskId for reliable identification
           );
           
-          return { moved: true };
+          // Return the success status to prevent further processing if needed
+          return { moved: success };
         }
       }
+      return undefined;
     },
     canDrop: () => !isPastDay,
   });
@@ -620,8 +709,9 @@ function CategoryColumn({
           <div 
             ref={dropContainerRef}
             className={cn(
-              "space-y-6 overflow-y-auto overflow-x-hidden flex-1 rounded-md",
-              isOver && !isPastDay && "bg-slate-800/30 transition-colors duration-200"
+              "space-y-6 overflow-y-auto overflow-x-hidden flex-1 rounded-md p-2 transition-all duration-200",
+              isOver && !isPastDay && "bg-slate-800/50 border border-dashed border-slate-600 shadow-inner",
+              !isOver && !isPastDay && "hover:bg-slate-900/30"
             )}>
             {(() => {
               // Section 1: Overdue
@@ -778,6 +868,7 @@ function CategoryColumn({
                               onToggleCompletion={() => onToggleCompletion(task.id)}
                               onToggleSubtaskCompletion={(subtaskId) => onToggleSubtaskCompletion(task.id, subtaskId)}
                               moveTask={moveTask}
+                              updateTask={updateTask}
                               isPastDay={isPastDay}
                             />
                           );
@@ -806,6 +897,7 @@ function CategoryColumn({
                               onToggleCompletion={() => onToggleCompletion(task.id)}
                               onToggleSubtaskCompletion={(subtaskId) => onToggleSubtaskCompletion(task.id, subtaskId)}
                               moveTask={moveTask}
+                              updateTask={updateTask}
                               isPastDay={isPastDay}
                             />
                           );
@@ -834,6 +926,7 @@ function CategoryColumn({
                               onToggleCompletion={() => onToggleCompletion(task.id)}
                               onToggleSubtaskCompletion={(subtaskId) => onToggleSubtaskCompletion(task.id, subtaskId)}
                               moveTask={moveTask}
+                              updateTask={updateTask}
                               isPastDay={isPastDay}
                             />
                           );
@@ -864,6 +957,7 @@ function DayColumn({
   onToggleCompletion,
   onToggleSubtaskCompletion,
   moveTask,
+  updateTask,
   showNewTaskInput,
   personalNewTaskText,
   workNewTaskText,
@@ -894,6 +988,7 @@ function DayColumn({
     toColumnType: "personal" | "work",
     taskId?: string
   ) => void
+  updateTask: (task: Task) => void
   showNewTaskInput: boolean
   personalNewTaskText: string
   workNewTaskText: string
@@ -962,6 +1057,7 @@ function DayColumn({
           onToggleCompletion={onToggleCompletion}
           onToggleSubtaskCompletion={onToggleSubtaskCompletion}
           moveTask={moveTask}
+          updateTask={updateTask}
           showNewTaskInput={showNewTaskInput}
           newTaskText={personalNewTaskText}
           onNewTaskTextChange={onPersonalNewTaskTextChange}
@@ -986,6 +1082,7 @@ function DayColumn({
           onToggleCompletion={onToggleCompletion}
           onToggleSubtaskCompletion={onToggleSubtaskCompletion}
           moveTask={moveTask}
+          updateTask={updateTask}
           showNewTaskInput={showNewTaskInput}
           newTaskText={workNewTaskText}
           onNewTaskTextChange={onWorkNewTaskTextChange}
@@ -1007,13 +1104,77 @@ function DayColumn({
 // Tasks main component
 export default function Tasks() {
   const [localLoading, setLocalLoading] = useState(true);
-  const { days, isLoading, error, refreshTasks, updateTask, deleteTask } = useTasks();
+  const { days, isLoading, error, refreshTasks, updateTask, deleteTask, moveTask: moveTaskFromHook } = useTasks();
   const { user } = useAuth();
   const router = useRouter();
   
-  // State for the modal
+  // State for the modal and notifications
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+    visible: boolean;
+  } | null>(null);
+  
+  // Function to show a notification
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setNotification({ message, type, visible: true });
+    
+    // Auto-hide notification after 3 seconds
+    const timer = setTimeout(() => {
+      setNotification(prev => prev ? { ...prev, visible: false } : null);
+    }, 3000);
+    
+    return () => clearTimeout(timer);
+  };
+  
+  // Function to hide the notification
+  const hideNotification = () => {
+    setNotification(null);
+  };
+  
+  // Enhanced move task function with error handling and notifications
+  const handleMove = async (
+    dragIndex: number,
+    hoverIndex: number,
+    fromDayIndex: number,
+    toDayIndex: number,
+    fromColumnType: "personal" | "work",
+    toColumnType: "personal" | "work",
+    taskId?: string
+  ) => {
+    // Don't attempt to move tasks while the app is in a loading state
+    if (isLoading) {
+      showNotification("Please wait while tasks are loading...", "info");
+      return false;
+    }
+    
+    try {
+      // Call the moveTask function from the hook
+      // The moveTaskFromHook updates the state internally
+      await moveTaskFromHook(
+        dragIndex,
+        hoverIndex,
+        fromDayIndex, 
+        toDayIndex,
+        fromColumnType,
+        toColumnType,
+        taskId
+      );
+      
+      // Show success notification for important moves (day changes)
+      if (fromDayIndex !== toDayIndex) {
+        showNotification("Task moved successfully", "success");
+      }
+      
+      return true;
+    } catch (err) {
+      console.error("Error in handleMove:", err);
+      showNotification("An error occurred while moving the task.", "error");
+      return false;
+    }
+  };
   
   // State for day columns
   const [visibleDays, setVisibleDays] = useState(days);
@@ -1065,7 +1226,11 @@ export default function Tasks() {
   // Update visible days when days changes
   useEffect(() => {
     if (days && days.length > 0) {
+      // Always update visibleDays when days changes, immediately
       setVisibleDays(days);
+      
+      // Additional logging to help debugging
+      console.log("Synchronized visibleDays with days from hook");
     }
   }, [days]);
   
@@ -1075,6 +1240,18 @@ export default function Tasks() {
     refreshTasks();
   };
   
+  // Function to handle task category changes
+  const handleTaskCategoryChange = async (task: Task) => {
+    try {
+      // Update the task in the database
+      await updateTask(task);
+      showNotification("Task category updated", "success");
+    } catch (err) {
+      console.error("Error updating task category:", err);
+      showNotification("Failed to update task category", "error");
+    }
+  };
+
   // Function to handle task clicks
   const handleTaskClick = (taskId: string) => {
     // Find the task in all days
@@ -1097,271 +1274,32 @@ export default function Tasks() {
     let taskDay: { date: Date; tasks: Task[]; isPast: boolean } | null = null
     
     for (const day of days) {
-      const task = day.tasks.find((t) => t.id === taskId)
-      if (task) {
-        taskToUpdate = { ...task }
+      const foundTask = day.tasks.find((t) => t.id === taskId)
+      if (foundTask) {
+        taskToUpdate = { ...foundTask }
         taskDay = day
         break
       }
     }
     
-    if (taskToUpdate && taskDay) {
-      const newCompletionState = !taskToUpdate.completed
-      
-      // Update completion state and date
-      taskToUpdate.completed = newCompletionState
-      
-      if (newCompletionState) {
-        // If completing the task, set completion date to today in ISO format
-        const today = new Date()
-        taskToUpdate.completionDate = format(today, "yyyy-MM-dd")
-        // Also set the MMM d format for legacy compatibility
-        taskToUpdate.completionDateMMMD = format(today, "MMM d")
-      } else {
-        // If uncompleting, remove dates
-        taskToUpdate.completionDate = undefined
-        taskToUpdate.completionDateMMMD = undefined
-      }
-      
-      // Update localStorage
-      const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks"
-      const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]")
-      
-      // Find and update the task in storage
-      const updatedStoredTasks = storedTasks.map((t: Task) => {
-        if (t.id === taskId) {
-          return { ...t, ...taskToUpdate }
-        }
-        return t
-      })
-      
-      // Save to localStorage
-      localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks))
-      
-      // Refresh tasks to update the UI
-      refreshTasks()
-    }
-  }
-  
-  // Function to handle toggling subtask completion
-  const handleToggleSubtaskCompletion = (taskId: string, subtaskId: string) => {
-    console.log("Toggle completion for subtask:", subtaskId, "of task:", taskId)
+    if (!taskToUpdate || !taskDay) return;
+
+    const newCompletionState = !taskToUpdate.completed
     
-    // Find the task in all days
-    let taskToUpdate: Task | null = null
+    // Update completion state and date
+    taskToUpdate.completed = newCompletionState
     
-    for (const day of days) {
-      const task = day.tasks.find((t) => t.id === taskId)
-      if (task) {
-        taskToUpdate = { ...task }
-        break
-      }
-    }
-    
-    if (taskToUpdate && taskToUpdate.subtasks) {
-      // Find and update the subtask
-      const updatedSubtasks = taskToUpdate.subtasks.map((subtask) => {
-        if (subtask.id === subtaskId) {
-          return { ...subtask, completed: !subtask.completed }
-        }
-        return subtask
-      })
-      
-      taskToUpdate.subtasks = updatedSubtasks
-      
-      // Update localStorage
-      const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks"
-      const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]")
-      
-      // Find and update the task in storage
-      const updatedStoredTasks = storedTasks.map((t: Task) => {
-        if (t.id === taskId) {
-          return { ...t, subtasks: updatedSubtasks }
-        }
-        return t
-      })
-      
-      // Save to localStorage
-      localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks))
-      
-      // Refresh tasks to update the UI
-      refreshTasks()
-    }
-  }
-  
-  // Function to move a task
-  const moveTask = (
-    dragIndex: number,
-    hoverIndex: number,
-    fromDayIndex: number,
-    toDayIndex: number,
-    fromColumnType: "personal" | "work",
-    toColumnType: "personal" | "work",
-    dragTaskId?: string, // Optional task ID for more reliable identification
-  ) => {
-    // Don't attempt to move tasks while the app is in a loading state
-    if (isLoading) return;
-    
-    console.log(`Moving task: ${dragTaskId} from day ${fromDayIndex} (${fromColumnType}) to day ${toDayIndex} (${toColumnType})`);
-    
-    // First, find the task using taskId (most reliable method)
-    let taskToMove: Task | null = null;
-    
-    if (dragTaskId) {
-      // Look for the task in all days
-      for (const day of visibleDays) {
-        const foundTask = day.tasks.find(t => t.id === dragTaskId);
-        if (foundTask) {
-          taskToMove = { ...foundTask };
-          break;
-        }
-      }
-    }
-    
-    // If task wasn't found by ID, try using indices
-    if (!taskToMove && fromDayIndex >= 0 && fromDayIndex < visibleDays.length) {
-      const tasksInSourceColumn = visibleDays[fromDayIndex].tasks.filter(
-        task => task.category === fromColumnType
-      );
-      
-      if (dragIndex >= 0 && dragIndex < tasksInSourceColumn.length) {
-        taskToMove = { ...tasksInSourceColumn[dragIndex] };
-      }
-    }
-    
-    // If we still couldn't find the task, abort
-    if (!taskToMove) {
-      console.error("Could not find task to move");
-      return;
-    }
-    
-    // Make a copy of days for immutable updates
-    const newDays = [...visibleDays];
-    
-    // Create an updated task with new properties
-    const updatedTask = { ...taskToMove };
-    
-    // 1. Apply category change if moving between columns
-    if (fromColumnType !== toColumnType) {
-      console.log(`Changing category from ${fromColumnType} to ${toColumnType}`);
-      updatedTask.category = toColumnType;
-    }
-    
-    // 2. Apply date change if moving between days
-    if (fromDayIndex !== toDayIndex) {
-      console.log(`Changing start date to match target day ${toDayIndex}`);
-      const targetDate = visibleDays[toDayIndex].date;
-      const formattedDate = format(targetDate, "MMM d");
-      const isoDate = format(targetDate, "yyyy-MM-dd");
-      
-      // Update start date (for display)
-      updatedTask.startDate = formattedDate;
-      
-      // Update due date (ISO format)
-      updatedTask.dueDate = isoDate;
-    }
-    
-    // 3. Remove the task from its original day
-    if (fromDayIndex >= 0 && fromDayIndex < newDays.length) {
-      newDays[fromDayIndex] = {
-        ...newDays[fromDayIndex],
-        tasks: newDays[fromDayIndex].tasks.filter(t => t.id !== taskToMove!.id)
-      };
-    }
-    
-    // 4. Add the task to its new day
-    if (toDayIndex >= 0 && toDayIndex < newDays.length) {
-      // Get all tasks in the target day
-      const targetDayTasks = [...newDays[toDayIndex].tasks];
-      
-      // Insert the task at the specified position
-      if (hoverIndex <= targetDayTasks.length) {
-        targetDayTasks.splice(hoverIndex, 0, updatedTask);
-      } else {
-        // If the position is out of bounds, append to the end
-        targetDayTasks.push(updatedTask);
-      }
-      
-      // Update the day
-      newDays[toDayIndex] = {
-        ...newDays[toDayIndex],
-        tasks: targetDayTasks
-      };
-    }
-    
-    // 5. Update the visible days
-    setVisibleDays(newDays);
-    
-    // 6. Save the changes to localStorage
-    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
-    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    
-    // Update the task in localStorage
-    const updatedStoredTasks = storedTasks.map((t: Task) => {
-      if (t.id === taskToMove!.id) {
-        return updatedTask;
-      }
-      return t;
-    });
-    
-    // Save to localStorage
-    localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks));
-    
-    // 7. Update the server in the background after a short delay
-    setTimeout(() => {
-      refreshTasks();
-    }, 200);
-  };
-  
-  // Function to add a new task
-  const handleAddNewTask = (dayIndex: number, columnType: "personal" | "work") => {
-    if (isLoading) return
-    
-    // Get the new task text
-    const newTaskText = columnType === "personal"
-      ? personalNewTaskTexts[dayIndex]
-      : workNewTaskTexts[dayIndex]
-    
-    if (!newTaskText.trim()) return
-    
-    // Create a new task
-    const newTask: Task = {
-      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      text: newTaskText.trim(),
-      description: "",
-      category: columnType,
-      completed: false,
-      dueDate: format(days[dayIndex].date, "yyyy-MM-dd"),
-      subtasks: [],
-    }
-    
-    // Add to localStorage
-    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks"
-    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]")
-    storedTasks.push(newTask)
-    localStorage.setItem(storageKey, JSON.stringify(storedTasks))
-    
-    // Clear the input
-    if (columnType === "personal") {
-      const updatedTexts = [...personalNewTaskTexts]
-      updatedTexts[dayIndex] = ""
-      setPersonalNewTaskTexts(updatedTexts)
+    if (newCompletionState) {
+      // If completing the task, set completion date to today in ISO format
+      const today = new Date()
+      taskToUpdate.completionDate = format(today, "yyyy-MM-dd")
+      // Also set the MMM d format for legacy compatibility
+      taskToUpdate.completionDateMMMD = format(today, "MMM d")
     } else {
-      const updatedTexts = [...workNewTaskTexts]
-      updatedTexts[dayIndex] = ""
-      setWorkNewTaskTexts(updatedTexts)
+      // If uncompleting, remove dates
+      taskToUpdate.completionDate = undefined
+      taskToUpdate.completionDateMMMD = undefined
     }
-    
-    // Refresh tasks to update the UI
-    refreshTasks()
-  }
-  
-  // Function to handle changing a task's category
-  const handleTaskCategoryChange = (task: Task) => {
-    if (isLoading) return
-    
-    // Update the task's category
-    const updatedTask = { ...task, category: task.category === "personal" ? "work" : "personal" }
     
     // Update localStorage
     const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks"
@@ -1369,8 +1307,8 @@ export default function Tasks() {
     
     // Find and update the task in storage
     const updatedStoredTasks = storedTasks.map((t: Task) => {
-      if (t.id === task.id) {
-        return updatedTask
+      if (t.id === taskToUpdate?.id) {
+        return taskToUpdate;
       }
       return t
     })
@@ -1378,10 +1316,115 @@ export default function Tasks() {
     // Save to localStorage
     localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks))
     
+    // Update the task in the database if applicable
+    if (isSupabaseConfigured() && taskToUpdate.id) {
+      updateTask(taskToUpdate).catch(error => {
+        console.error('Error updating task in database:', error);
+      });
+    }
+    
     // Refresh tasks to update the UI
-    refreshTasks()
+    refreshTasks();
   }
   
+  // Function to add a new task
+  const handleAddNewTask = (dayIndex: number, columnType: "personal" | "work") => {
+    const text = columnType === "personal" 
+      ? personalNewTaskTexts[dayIndex]
+      : workNewTaskTexts[dayIndex];
+    
+    if (!text.trim()) return;
+    
+    const newTask: Task = {
+      id: crypto.randomUUID(),
+      text: text.trim(),
+      category: columnType,
+      completed: false,
+      day: format(days[dayIndex].date, 'yyyy-MM-dd'),
+      subtasks: []
+    };
+    
+    // Update localStorage
+    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
+    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    storedTasks.push(newTask);
+    localStorage.setItem(storageKey, JSON.stringify(storedTasks));
+    
+    // Update the task in the database if applicable
+    if (isSupabaseConfigured()) {
+      updateTask(newTask).catch(error => {
+        console.error('Error adding task to database:', error);
+      });
+    }
+    
+    // Clear the input
+    if (columnType === "personal") {
+      const updatedTexts = [...personalNewTaskTexts];
+      updatedTexts[dayIndex] = '';
+      setPersonalNewTaskTexts(updatedTexts);
+    } else {
+      const updatedTexts = [...workNewTaskTexts];
+      updatedTexts[dayIndex] = '';
+      setWorkNewTaskTexts(updatedTexts);
+    }
+    
+    // Refresh tasks to update the UI
+    refreshTasks();
+  };
+
+  // Function to handle toggling subtask completion
+  const handleToggleSubtaskCompletion = (taskId: string, subtaskId: string) => {
+    if (isLoading) return;
+    
+    // Find the task in all days
+    let taskToUpdate: Task | null = null;
+    
+    for (const day of days) {
+      const task = day.tasks.find((t) => t.id === taskId);
+      if (task) {
+        taskToUpdate = { ...task };
+        break;
+      }
+    }
+    
+    if (!taskToUpdate || !taskToUpdate.subtasks) return;
+    
+    // Find and update the subtask
+    const updatedSubtasks = taskToUpdate.subtasks.map((subtask) => {
+      if (subtask.id === subtaskId) {
+        return { ...subtask, completed: !subtask.completed };
+      }
+      return subtask;
+    });
+    
+    taskToUpdate.subtasks = updatedSubtasks;
+    
+    // Update localStorage
+    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
+    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    
+    // Find and update the task in storage
+    const updatedStoredTasks = storedTasks.map((t: Task) => {
+      if (t.id === taskId) {
+        return { ...t, subtasks: updatedSubtasks };
+      }
+      return t;
+    });
+    
+    // Save to localStorage
+    localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks));
+    
+    // Update the task in the database if applicable
+    if (isSupabaseConfigured() && taskToUpdate.id) {
+      updateTask(taskToUpdate).catch(error => {
+        console.error('Error updating task in database:', error);
+      });
+    }
+    
+    // Refresh tasks to update the UI
+    refreshTasks();
+  };
+
   // Function to handle key presses in the new task input
   const handleInputKeyDown = (dayIndex: number, columnType: "personal" | "work", e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -1422,6 +1465,13 @@ export default function Tasks() {
   return (
     <PageLayout>
       <div className="w-full">
+        {notification && notification.visible && (
+          <TaskNotification 
+            message={notification.message}
+            type={notification.type}
+            onClose={hideNotification}
+          />
+        )}
         <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center space-x-2">
             <Button variant="ghost" size="sm" onClick={handleRefresh}>
@@ -1486,7 +1536,8 @@ export default function Tasks() {
                   onTaskClick={handleTaskClick}
                   onToggleCompletion={handleToggleCompletion}
                   onToggleSubtaskCompletion={handleToggleSubtaskCompletion}
-                  moveTask={moveTask}
+                  moveTask={handleMove}
+                  updateTask={updateTask}
                   showNewTaskInput={showNewTaskInput}
                   personalNewTaskText={personalNewTaskTexts[dayIndex]}
                   workNewTaskText={workNewTaskTexts[dayIndex]}
@@ -1495,7 +1546,7 @@ export default function Tasks() {
                   onTogglePersonalNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "personal")}
                   onToggleWorkNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "work")}
                   onAddNewTask={handleAddNewTask}
-                  isLoading={localLoading}
+                  isLoading={isLoading || localLoading}
                   onTaskCategoryChange={handleTaskCategoryChange}
                   onKeyDown={handleInputKeyDown}
                   isPersonalCollapsed={personalCollapsed[dayIndex]}

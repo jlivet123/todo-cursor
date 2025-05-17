@@ -47,39 +47,21 @@ interface DayWithTasks {
   isPast: boolean
 }
 
-// Add this debounce/throttle utility at the top of the file, just below the imports
-// This will prevent the moveTask function from being called too frequently
-function throttle<T extends (...args: any[]) => any>(func: T, delay: number): (...args: Parameters<T>) => void {
-  let lastCall = 0;
-  let timeout: NodeJS.Timeout | null = null;
-  let lastArgs: Parameters<T> | null = null;
+// Add this debounce utility to prevent the moveTask function from being called too frequently
+function debounce<T extends (...args: any[]) => any>(func: T, delay: number): (...args: Parameters<T>) => void {
+  let timeoutId: NodeJS.Timeout | null = null;
   
   return (...args: Parameters<T>) => {
-    const now = Date.now();
-    const timeSinceLastCall = now - lastCall;
-    
-    // Store the latest arguments
-    lastArgs = args;
-    
-    // If we're within the throttle period, schedule a call
-    if (timeSinceLastCall < delay) {
-      // Clear any existing timeout
-      if (timeout) clearTimeout(timeout);
-      
-      // Schedule a new call with the latest arguments
-      timeout = setTimeout(() => {
-        lastCall = Date.now();
-        func(...(lastArgs as Parameters<T>));
-        timeout = null;
-        lastArgs = null;
-      }, delay - timeSinceLastCall);
-      
-      return;
+    // Clear any existing timeout
+    if (timeoutId) {
+      clearTimeout(timeoutId);
     }
     
-    // Otherwise call immediately
-    lastCall = now;
-    func(...args);
+    // Set a new timeout
+    timeoutId = setTimeout(() => {
+      func(...args);
+      timeoutId = null;
+    }, delay);
   };
 }
 
@@ -117,6 +99,38 @@ function debugTaskAssignment(task: Task, dayDate: Date, reason: string, isAssign
 }
 
 // Debugging function to log date comparison details
+function debugDateComparison(taskId: string, taskText: string, date1: Date | undefined, date2: Date | undefined, operation: string) {
+  if (!date1 || !date2) {
+    console.log(`[DATE DEBUG] ${operation} - Task ${taskId} (${taskText.substring(0, 20)}...) - One of the dates is undefined`);
+    return;
+  }
+  
+  console.log(
+    `[DATE DEBUG] ${operation} - Task ${taskId} (${taskText.substring(0, 20)}...) - ` +
+    `Comparing ${date1.toISOString()} vs ${date2.toISOString()} - ` +
+    `Year: ${date1.getFullYear() === date2.getFullYear()}, ` +
+    `Month: ${date1.getMonth() === date2.getMonth()}, ` +
+    `Day: ${date1.getDate() === date2.getDate()}`
+  );
+}
+
+// Helper to ensure consistent date formatting
+function formatTaskDates(task: Task, targetDate: Date) {
+  // For display (MMM d format)
+  const displayDate = format(targetDate, "MMM d");
+  
+  // For ISO format (yyyy-MM-dd)
+  const isoDate = format(targetDate, "yyyy-MM-dd");
+  
+  // Create a clean date object to avoid serialization issues
+  const dateObj = new Date(targetDate.getTime());
+  
+  return {
+    startDate: displayDate,
+    startDateObj: dateObj,
+    dueDate: isoDate
+  };
+}
 
 export function useTasks() {
   const [days, setDays] = useState<DayWithTasks[]>([])
@@ -824,150 +838,217 @@ export function useTasks() {
       console.error("Error updating task positions for day and category:", err)
     }
   }
-
-  // The moveTask function and its implementation
-  const moveTaskImpl = async (
-    dragIndex: number,
-    hoverIndex: number,
-    fromDayIndex: number,
-    toDayIndex: number,
-    fromColumnType: 'work' | 'personal',
-    toColumnType: 'work' | 'personal',
-    taskId?: string
-  ) => {
-    try {
-      // Skip invalid moves right away
-      if (days.length <= fromDayIndex || days.length <= toDayIndex || fromDayIndex < 0 || toDayIndex < 0) {
-        console.error(`Invalid day indices - fromDayIndex: ${fromDayIndex}, toDayIndex: ${toDayIndex}, days length: ${days.length}`);
-        return;
-      }
-
-      // First try to find task by ID - most reliable
-      let draggedTask: Task | undefined;
-      
-      if (taskId) {
-        // First try the specific day and column
-        draggedTask = days[fromDayIndex].tasks.find(t => t.id === taskId && t.category === fromColumnType);
-        
-        // Then just by ID in the source day
-        if (!draggedTask) {
-          draggedTask = days[fromDayIndex].tasks.find(t => t.id === taskId);
+  
+  // Update the positions of tasks within a day and category
+  const updatePositionsAfterReorder = async (dayIndex: number, columnType: "personal" | "work") => {
+    // Skip if we're out of bounds
+    if (dayIndex < 0 || dayIndex >= days.length) return;
+    
+    // Get all tasks in the specified day and category
+    const tasksToUpdate = days[dayIndex].tasks
+      .filter(t => t.category === columnType)
+      .map((task, index) => ({
+        ...task,
+        position: index // Update position based on array order
+      }));
+    
+    // Skip if there are no tasks
+    if (tasksToUpdate.length === 0) return;
+    
+    console.log(`Updating positions for ${tasksToUpdate.length} tasks in day ${dayIndex}, ${columnType}`);
+    
+    // Save the updated positions
+    // Use an efficient batch update if available, otherwise update individually
+    if (isSupabaseConfigured()) {
+      try {
+        // Update all tasks with their new positions
+        for (const task of tasksToUpdate) {
+          await saveTask(task);
         }
         
-        // Finally look in all tasks
-        if (!draggedTask) {
-          draggedTask = allTasks.find(t => t.id === taskId);
-        }
+        // Update local state
+        setAllTasks(prevTasks => 
+          prevTasks.map(task => {
+            const updatedTask = tasksToUpdate.find(t => t.id === task.id);
+            return updatedTask || task;
+          })
+        );
+      } catch (err) {
+        console.error("Error updating task positions:", err);
       }
+    } else {
+      // For localStorage, we can just update the tasks directly
+      const storageKey = "tasks";
+      const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
       
-      // If still not found, try by index and category
-      if (!draggedTask && dragIndex !== undefined && dragIndex >= 0) {
-        const tasksWithCategory = days[fromDayIndex].tasks.filter(t => t.category === fromColumnType);
-        if (tasksWithCategory.length > dragIndex) {
-          draggedTask = tasksWithCategory[dragIndex];
-        }
-      }
-
-      // If we still couldn't find the task, log error and return
-      if (!draggedTask) {
-        console.error(`Could not find task to move (Index: ${dragIndex}, Day: ${fromDayIndex}, Column: ${fromColumnType}, ID: ${taskId || 'none'})`);
-        return;
-      }
-      
-      // Create updated task with new properties
-      const updatedTask = {
-        ...draggedTask,
-        category: toColumnType, // Always update category
-      };
-
-      // If moving to a different day, update both startDate and dueDate
-      if (fromDayIndex !== toDayIndex) {
-        const targetDate = days[toDayIndex].date;
-        const formattedDate = format(targetDate, "MMM d");
-        const isoDate = format(targetDate, "yyyy-MM-dd");
-        
-        console.log(`Moving task to day ${toDayIndex}, setting startDate to ${formattedDate}`);
-        
-        updatedTask.startDate = formattedDate;
-        updatedTask.startDateObj = new Date(targetDate); // Ensure we create a proper date object
-        updatedTask.dueDate = isoDate;
-        
-        // Log the updated task for debugging
-        console.log("Updated task dates:", {
-          id: updatedTask.id,
-          text: updatedTask.text.substring(0, 30),
-          startDate: updatedTask.startDate,
-          startDateObj: updatedTask.startDateObj ? format(updatedTask.startDateObj, 'yyyy-MM-dd') : 'undefined',
-          dueDate: updatedTask.dueDate
-        });
-      }
-
-      // Optimistically update the UI state
-      setDays(prevDays => {
-        const newDays = [...prevDays];
-        
-        // Remove from source day
-        newDays[fromDayIndex] = {
-          ...newDays[fromDayIndex],
-          tasks: newDays[fromDayIndex].tasks.filter(t => t.id !== draggedTask!.id)
-        };
-        
-        // Add to target day
-        newDays[toDayIndex] = {
-          ...newDays[toDayIndex],
-          tasks: [
-            ...newDays[toDayIndex].tasks.slice(0, hoverIndex),
-            updatedTask,
-            ...newDays[toDayIndex].tasks.slice(hoverIndex)
-          ]
-        };
-        
-        return newDays;
+      // Update positions in stored tasks
+      const updatedStoredTasks = storedTasks.map((t: Task) => {
+        const updatedTask = tasksToUpdate.find(ut => ut.id === t.id);
+        return updatedTask || t;
       });
       
-      // Update allTasks state
+      // Save to localStorage
+      localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks));
+      
+      // Update local state
       setAllTasks(prevTasks => 
-        prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t)
+        prevTasks.map(task => {
+          const updatedTask = tasksToUpdate.find(t => t.id === task.id);
+          return updatedTask || task;
+        })
       );
-
-      // Save to backend without waiting
-      try {
-        const supabase = getSupabaseClient();
-        if (supabase) {
-          supabase
-            .from("tasks")
-            .update({
-              start_date: updatedTask.startDate,
-              due_date: updatedTask.dueDate,
-              category: updatedTask.category
-            })
-            .eq("id", updatedTask.id)
-            .then(({ error }) => {
-              if (error) {
-                console.error("Error updating task:", error);
-                saveTask(updatedTask).catch(console.error);
-              }
-            });
-        } else {
-          saveTask(updatedTask).catch(console.error);
-        }
-
-        // Update positions in background if needed
-        if (fromDayIndex === toDayIndex && fromColumnType === toColumnType) {
-          setTimeout(() => {
-            updateTaskPositionsForDayAndCategory(toDayIndex, toColumnType);
-          }, 100);
-        }
-      } catch (err) {
-        console.error("Error saving moved task:", err);
-      }
-    } catch (err) {
-      console.error("Error moving task:", err);
     }
   };
 
-  // Create a throttled version of moveTask to prevent excessive calls
-  const moveTask = throttle(moveTaskImpl, 300);
+// 1. Enhanced moveTask function with complete implementation
+// The moveTask function and its implementation
+const moveTaskImpl = async (
+  dragIndex: number,
+  hoverIndex: number,
+  fromDayIndex: number,
+  toDayIndex: number,
+  fromColumnType: 'work' | 'personal',
+  toColumnType: 'work' | 'personal',
+  taskId?: string
+) => {
+  try {
+    // Add this detailed logging at the beginning
+    console.log(`
+    ===== MOVE TASK OPERATION =====
+    Task ID: ${taskId}
+    From Day: ${fromDayIndex}, To Day: ${toDayIndex}
+    From Column: ${fromColumnType}, To Column: ${toColumnType}
+    From Index: ${dragIndex}, To Index: ${hoverIndex}
+  `);
+    // Skip invalid moves right away
+    if (days.length <= fromDayIndex || days.length <= toDayIndex || fromDayIndex < 0 || toDayIndex < 0) {
+      console.error(`Invalid day indices - fromDayIndex: ${fromDayIndex}, toDayIndex: ${toDayIndex}, days length: ${days.length}`);
+      return null;
+    }
+
+    // First try to find task by ID - most reliable
+    let draggedTask: Task | undefined;
+    
+    // Add detailed logging for task finding
+    console.log(`Looking for task with ID: ${taskId}`);
+    if (taskId) {
+      // First try to find in the specified day and column
+      draggedTask = days[fromDayIndex]?.tasks?.find(
+        t => t.id === taskId && t.category === fromColumnType
+      );
+      
+      // If not found, search in the entire day
+      if (!draggedTask) {
+        draggedTask = days[fromDayIndex]?.tasks?.find(t => t.id === taskId);
+      }
+      
+      // If still not found, search in all tasks
+      if (!draggedTask) {
+        draggedTask = allTasks.find(t => t.id === taskId);
+      }
+    }
+    
+    // Fallback to index-based lookup if ID lookup fails
+    if (!draggedTask && dragIndex >= 0) {
+      const tasksInSourceColumn = days[fromDayIndex].tasks.filter(
+        t => t.category === fromColumnType
+      );
+      
+      if (dragIndex < tasksInSourceColumn.length) {
+        draggedTask = tasksInSourceColumn[dragIndex];
+      }
+    }
+
+    // If we couldn't find the task, abort
+    if (!draggedTask) {
+      console.error(`Could not find task to move (ID: ${taskId})`);
+      return null;
+    }
+    
+    // Create a deep copy of the task to avoid mutation issues
+    const updatedTask = { ...draggedTask };
+    
+    // Always update the category if it's changing
+    if (fromColumnType !== toColumnType) {
+      updatedTask.category = toColumnType;
+    }
+
+    // Update dates when moving between days
+    if (fromDayIndex !== toDayIndex) {
+      const targetDate = days[toDayIndex].date;
+      const formattedDates = formatTaskDates(updatedTask, targetDate);
+      
+      // Apply all date fields consistently
+      updatedTask.startDate = formattedDates.startDate;
+      updatedTask.startDateObj = formattedDates.startDateObj;
+      updatedTask.dueDate = formattedDates.dueDate;
+    }
+
+    // Update the task in the array
+    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
+    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    
+    // Update the stored task data
+    const updatedStoredTasks = storedTasks.map((t: Task) => {
+      if (t.id === draggedTask!.id) {
+        return updatedTask;
+      }
+      return t;
+    });
+    
+    // Save to localStorage
+    localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks));
+
+    // Optimistically update the UI state
+    setDays(prevDays => {
+      const newDays = [...prevDays];
+      
+      // Remove from source day
+      newDays[fromDayIndex] = {
+        ...newDays[fromDayIndex],
+        tasks: newDays[fromDayIndex].tasks.filter(t => t.id !== draggedTask!.id)
+      };
+      
+      // Add to target day at the specific position
+      const targetDayTasks = [...newDays[toDayIndex].tasks];
+      
+      // Insert at the position specified by hoverIndex
+      if (hoverIndex <= targetDayTasks.length) {
+        targetDayTasks.splice(hoverIndex, 0, updatedTask);
+      } else {
+        // If position is out of bounds, append to the end
+        targetDayTasks.push(updatedTask);
+      }
+      
+      newDays[toDayIndex] = {
+        ...newDays[toDayIndex],
+        tasks: targetDayTasks
+      };
+      
+      return newDays;
+    });
+    
+    // Update allTasks for consistency
+    setAllTasks(prevTasks => 
+      prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t)
+    );
+
+    // Update positions when reordering within the same column
+    if (fromDayIndex === toDayIndex && fromColumnType === toColumnType) {
+      // Update positions when reordering within the same column
+      await updatePositionsAfterReorder(toDayIndex, toColumnType);
+    }
+    
+    // Return the updated task object
+    return updatedTask;
+  } catch (err) {
+    console.error("Error moving task:", err);
+    return null;
+  }
+};
+
+  // Create a debounced version of moveTask to prevent flickering and excessive calls
+  const moveTask = debounce(moveTaskImpl, 150);
 
   // Find the index of today in the days array
   const findTodayIndex = () => {
