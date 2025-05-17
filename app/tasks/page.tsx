@@ -552,7 +552,7 @@ function CategoryColumn({
   onToggleSubtaskCompletion,
   moveTask,
   updateTask,
-  showNewTaskInput,
+  isNewTaskOpen,
   newTaskText,
   onNewTaskTextChange,
   onToggleNewTaskInput,
@@ -583,7 +583,7 @@ function CategoryColumn({
     taskId?: string
   ) => void
   updateTask: (task: Task) => void
-  showNewTaskInput: boolean
+  isNewTaskOpen: boolean
   newTaskText: string
   onNewTaskTextChange: (text: string) => void
   onToggleNewTaskInput: () => void
@@ -600,10 +600,10 @@ function CategoryColumn({
   const dropContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (showNewTaskInput && inputRef.current && !isPastDay) {
+    if (isNewTaskOpen && inputRef.current && !isPastDay) {
       inputRef.current.focus();
     }
-  }, [showNewTaskInput, isPastDay]);
+  }, [isNewTaskOpen, isPastDay]);
 
   const [{ isOver }, drop] = useDrop({
     accept: ITEM_TYPE,
@@ -702,7 +702,7 @@ function CategoryColumn({
 
       {!isCollapsed ? (
         <>
-          {showNewTaskInput && !isPastDay && (
+          {isNewTaskOpen && !isPastDay && (
             <div className="mb-4 bg-slate-800 rounded-md p-3">
               <div className="flex items-center gap-3">
                 <Plus className="h-5 w-5 text-slate-400 flex-shrink-0" />
@@ -971,7 +971,8 @@ function DayColumn({
   onToggleSubtaskCompletion,
   moveTask,
   updateTask,
-  showNewTaskInput,
+  personalIsNewTaskOpen,
+  workIsNewTaskOpen,
   personalNewTaskText,
   workNewTaskText,
   onPersonalNewTaskTextChange,
@@ -1002,7 +1003,8 @@ function DayColumn({
     taskId?: string
   ) => void
   updateTask: (task: Task) => void
-  showNewTaskInput: boolean
+  personalIsNewTaskOpen: boolean
+  workIsNewTaskOpen: boolean
   personalNewTaskText: string
   workNewTaskText: string
   onPersonalNewTaskTextChange: (text: string) => void
@@ -1062,7 +1064,7 @@ function DayColumn({
           onToggleSubtaskCompletion={onToggleSubtaskCompletion}
           moveTask={moveTask}
           updateTask={updateTask}
-          showNewTaskInput={showNewTaskInput}
+          isNewTaskOpen={personalIsNewTaskOpen}
           newTaskText={personalNewTaskText}
           onNewTaskTextChange={onPersonalNewTaskTextChange}
           onToggleNewTaskInput={onTogglePersonalNewTaskInput}
@@ -1087,7 +1089,7 @@ function DayColumn({
           onToggleSubtaskCompletion={onToggleSubtaskCompletion}
           moveTask={moveTask}
           updateTask={updateTask}
-          showNewTaskInput={showNewTaskInput}
+          isNewTaskOpen={workIsNewTaskOpen}
           newTaskText={workNewTaskText}
           onNewTaskTextChange={onWorkNewTaskTextChange}
           onToggleNewTaskInput={onToggleWorkNewTaskInput}
@@ -1112,11 +1114,57 @@ export default function Tasks() {
     days, 
     isLoading, 
     error, 
-    refreshTasks, 
-    updateTask, 
+    refreshTasks: originalRefreshTasks, 
+    createTask,
+    updateTask: updateTaskFromHook, 
     deleteTask, 
-    moveTask: moveTaskFromHook 
+    moveTask: moveTaskFromHook
   } = useTasks();
+  
+  // Enhanced refresh function with debug logging
+  const refreshTasks = async () => {
+    console.log("Starting task refresh...");
+    await originalRefreshTasks();
+    console.log("Task refresh complete. Current tasks count:", days.length > 0 ? 
+      days.reduce((count, day) => count + day.tasks.length, 0) : 0);
+  };
+  
+  // Wrapper for updateTask to ensure consistent error handling and parameter format
+  const updateTask = async (taskOrId: string | Task, updates?: Partial<Task>) => {
+    try {
+      let taskId: string;
+      let taskUpdates: Partial<Task>;
+      
+      // Handle both parameter formats for backward compatibility
+      if (typeof taskOrId === 'string') {
+        // Called with (taskId, updates)
+        taskId = taskOrId;
+        taskUpdates = updates || {};
+      } else {
+        // Called with (task)
+        const task = taskOrId as Task;
+        taskId = task.id;
+        taskUpdates = { ...task };
+        delete taskUpdates.id; // Remove id from updates to prevent issues
+      }
+      
+      console.log(`Updating task ${taskId} with:`, taskUpdates);
+      
+      const result = await updateTaskFromHook(taskId, taskUpdates);
+      
+      if (result) {
+        showNotification("Task updated successfully", "success");
+      } else {
+        throw new Error("Failed to update task: no result returned");
+      }
+      
+      return result;
+    } catch (error) {
+      console.error("Error updating task:", error);
+      showNotification("Failed to update task", "error");
+      return null;
+    }
+  };
   
   // Initialize window.lastTaskMoveTime if it doesn't exist
   if (typeof window !== 'undefined' && window.lastTaskMoveTime === undefined) {
@@ -1218,8 +1266,8 @@ export default function Tasks() {
         showNotification("Task moved successfully", "success");
         
         // After 3 seconds, do a refresh to ensure everything is in sync
-        setTimeout(() => {
-          refreshTasks();
+        setTimeout(async () => {
+          await refreshTasks();
         }, 3000);
       }
       
@@ -1235,21 +1283,39 @@ export default function Tasks() {
   const [visibleDays, setVisibleDays] = useState(days);
   const [currentDayIndex, setCurrentDayIndex] = useState(0);
   
-  // Log when days change
-  useEffect(() => {
-    if (days && days.length > 0) {
-     setVisibleDays(days);
-    }
-  }, [days]);
-  
   // State for new task input
-  const [showNewTaskInput, setShowNewTaskInput] = useState(false);
+  const [personalNewTaskOpen, setPersonalNewTaskOpen] = useState<boolean[]>(
+    Array(days.length || 7).fill(false)
+  );
+  const [workNewTaskOpen, setWorkNewTaskOpen] = useState<boolean[]>(
+    Array(days.length || 7).fill(false)
+  );
   const [personalNewTaskTexts, setPersonalNewTaskTexts] = useState<string[]>(Array(7).fill(''));
   const [workNewTaskTexts, setWorkNewTaskTexts] = useState<string[]>(Array(7).fill(''));
   
   // State for collapsed columns
   const [personalCollapsed, setPersonalCollapsed] = useState<boolean[]>(Array(7).fill(false));
   const [workCollapsed, setWorkCollapsed] = useState<boolean[]>(Array(7).fill(false));
+  
+  // Log when days change
+  useEffect(() => {
+    if (days && days.length > 0) {
+      setVisibleDays(days);
+    }
+  }, [days]);
+  
+  // Ensure arrays are correctly sized when days change
+  useEffect(() => {
+    if (days.length > 0) {
+      // Resize the array when days change
+      if (personalNewTaskOpen.length !== days.length) {
+        setPersonalNewTaskOpen(Array(days.length).fill(false));
+      }
+      if (workNewTaskOpen.length !== days.length) {
+        setWorkNewTaskOpen(Array(days.length).fill(false));
+      }
+    }
+  }, [days.length, personalNewTaskOpen.length, workNewTaskOpen.length]);
   
   // Helper function to toggle column collapse state
   const toggleColumnCollapse = (dayIndex: number, columnType: "personal" | "work") => {
@@ -1294,16 +1360,16 @@ export default function Tasks() {
   }, [days]);
   
   // Custom refresh function to update UI without showing loading state
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     // Don't set loading state to true immediately to avoid flickering
-    refreshTasks();
+    await refreshTasks();
   };
   
   // Function to handle task category changes
   const handleTaskCategoryChange = async (task: Task) => {
     try {
       // Update the task in the database
-      await updateTask(task);
+      await updateTask(task.id, { ...task });
       showNotification("Task category updated", "success");
     } catch (err) {
       console.error("Error updating task category:", err);
@@ -1385,48 +1451,74 @@ export default function Tasks() {
   }
   
   // Function to add a new task
-  const handleAddNewTask = (dayIndex: number, columnType: "personal" | "work") => {
-    const text = columnType === "personal" 
-      ? personalNewTaskTexts[dayIndex]
-      : workNewTaskTexts[dayIndex];
-    
-    if (!text.trim()) return;
-    
-    const newTask: Task = {
-      id: crypto.randomUUID(),
-      text: text.trim(),
-      category: columnType,
-      completed: false,
-      day: format(days[dayIndex].date, 'yyyy-MM-dd'),
-      subtasks: []
-    };
-    
-    // Update localStorage
-    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
-    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    storedTasks.push(newTask);
-    localStorage.setItem(storageKey, JSON.stringify(storedTasks));
-    
-    // Update the task in the database if applicable
-    if (isSupabaseConfigured()) {
-      updateTask(newTask).catch(error => {
-        console.error('Error adding task to database:', error);
-      });
+  const handleAddNewTask = async (dayIndex: number, columnType: "personal" | "work") => {
+    try {
+      // Get the text input value
+      const text = columnType === "personal" 
+        ? personalNewTaskTexts[dayIndex]
+        : workNewTaskTexts[dayIndex];
+      
+      // Validate input
+      if (!text.trim()) return;
+      
+      // Show loading notification
+      showNotification("Creating task...", "info");
+      
+      console.log(`Creating new task: "${text}" for day ${dayIndex}, category ${columnType}`);
+      
+      // Use the createTask function from the hook which handles saving and UI updates
+      const savedTask = await createTask(text.trim(), dayIndex, columnType);
+      
+      if (!savedTask) {
+        throw new Error("Failed to create task");
+      }
+      
+      console.log("Task created successfully:", savedTask);
+      
+      // Manual localStorage backup to ensure the task is persisted
+      const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
+      const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      const taskExists = storedTasks.some((t: Task) => t.id === savedTask.id);
+
+      if (!taskExists) {
+        storedTasks.push(savedTask);
+        localStorage.setItem(storageKey, JSON.stringify(storedTasks));
+        console.log("Task manually backed up to localStorage");
+      }
+      
+      // Clear the input
+      if (columnType === "personal") {
+        const updatedTexts = [...personalNewTaskTexts];
+        updatedTexts[dayIndex] = '';
+        setPersonalNewTaskTexts(updatedTexts);
+        
+        // Close the input after adding
+        const updatedVisibility = [...personalNewTaskOpen];
+        updatedVisibility[dayIndex] = false;
+        setPersonalNewTaskOpen(updatedVisibility);
+      } else {
+        const updatedTexts = [...workNewTaskTexts];
+        updatedTexts[dayIndex] = '';
+        setWorkNewTaskTexts(updatedTexts);
+        
+        // Close the input after adding
+        const updatedVisibility = [...workNewTaskOpen];
+        updatedVisibility[dayIndex] = false;
+        setWorkNewTaskOpen(updatedVisibility);
+      }
+      
+      // Show success notification
+      showNotification("Task created successfully", "success");
+      
+      // The createTask function already refreshes the UI
+      // No need to call refreshTasks() here
+      
+      return savedTask;
+    } catch (error) {
+      console.error("Error creating task:", error);
+      showNotification("Failed to create task. Please try again.", "error");
+      throw error; // Re-throw to allow callers to handle the error if needed
     }
-    
-    // Clear the input
-    if (columnType === "personal") {
-      const updatedTexts = [...personalNewTaskTexts];
-      updatedTexts[dayIndex] = '';
-      setPersonalNewTaskTexts(updatedTexts);
-    } else {
-      const updatedTexts = [...workNewTaskTexts];
-      updatedTexts[dayIndex] = '';
-      setWorkNewTaskTexts(updatedTexts);
-    }
-    
-    // Refresh tasks to update the UI
-    refreshTasks();
   };
 
   // Function to handle toggling subtask completion
@@ -1485,17 +1577,54 @@ export default function Tasks() {
   // Function to handle key presses in the new task input
   const handleInputKeyDown = (dayIndex: number, columnType: "personal" | "work", e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      e.preventDefault()
-      handleAddNewTask(dayIndex, columnType)
+      e.preventDefault();
+      handleAddNewTask(dayIndex, columnType);
     } else if (e.key === "Escape") {
-      e.preventDefault()
-      setShowNewTaskInput(false)
+      e.preventDefault();
+      
+      // Close only the specific column's input
+      if (columnType === "personal") {
+        const newFlags = [...personalNewTaskOpen];
+        newFlags[dayIndex] = false;
+        setPersonalNewTaskOpen(newFlags);
+      } else {
+        const newFlags = [...workNewTaskOpen];
+        newFlags[dayIndex] = false;
+        setWorkNewTaskOpen(newFlags);
+      }
     }
   }
   
-  // Function to handle toggling the new task input
+  // Function to handle toggling the new task input for a specific column
   const handleToggleNewTaskInput = (dayIndex: number, columnType: "personal" | "work") => {
-    setShowNewTaskInput(true)
+    // Don't allow adding tasks to past days
+    if (days[dayIndex]?.isPast) return;
+    
+    if (columnType === "personal") {
+      // Toggle the Personal column input state for this day only
+      const newFlags = [...personalNewTaskOpen];
+      newFlags[dayIndex] = !newFlags[dayIndex];
+      setPersonalNewTaskOpen(newFlags);
+      
+      // Close work input if it's open for the same day
+      if (workNewTaskOpen[dayIndex]) {
+        const workUpdated = [...workNewTaskOpen];
+        workUpdated[dayIndex] = false;
+        setWorkNewTaskOpen(workUpdated);
+      }
+    } else {
+      // Toggle the Work column input state for this day only
+      const newFlags = [...workNewTaskOpen];
+      newFlags[dayIndex] = !newFlags[dayIndex];
+      setWorkNewTaskOpen(newFlags);
+      
+      // Close personal input if it's open for the same day
+      if (personalNewTaskOpen[dayIndex]) {
+        const personalUpdated = [...personalNewTaskOpen];
+        personalUpdated[dayIndex] = false;
+        setPersonalNewTaskOpen(personalUpdated);
+      }
+    }
   }
   
   // Function to handle changing the new task text
@@ -1577,7 +1706,12 @@ export default function Tasks() {
             <AlertCircle className="h-12 w-12 text-slate-400 mb-4" />
             <h3 className="text-lg font-medium">No tasks found</h3>
             <p className="text-slate-400 mt-1 mb-4">Create a task to get started</p>
-            <Button onClick={() => setShowNewTaskInput(true)}>
+            <Button onClick={() => {
+              // Default to opening task input in today's Personal column
+              const todayIndex = days.findIndex(day => isToday(day.date));
+              const targetIndex = todayIndex >= 0 ? todayIndex : 0;
+              handleToggleNewTaskInput(targetIndex, "personal");
+            }}>
               <Plus className="h-4 w-4 mr-2" />
               New Task
             </Button>
@@ -1595,7 +1729,8 @@ export default function Tasks() {
                   onToggleSubtaskCompletion={handleToggleSubtaskCompletion}
                   moveTask={handleMove}
                   updateTask={updateTask}
-                  showNewTaskInput={showNewTaskInput}
+                  personalIsNewTaskOpen={personalNewTaskOpen[dayIndex]}
+                  workIsNewTaskOpen={workNewTaskOpen[dayIndex]}
                   personalNewTaskText={personalNewTaskTexts[dayIndex]}
                   workNewTaskText={workNewTaskTexts[dayIndex]}
                   onPersonalNewTaskTextChange={(text) => handlePersonalNewTaskTextChange(dayIndex, text)}
@@ -1622,7 +1757,7 @@ export default function Tasks() {
             isOpen={isTaskModalOpen}
             onClose={() => setIsTaskModalOpen(false)}
             onSave={async (updatedTask) => {
-              await updateTask(updatedTask);
+              await updateTask(updatedTask.id, updatedTask);
               setIsTaskModalOpen(false);
               setSelectedTask(null);
             }}
