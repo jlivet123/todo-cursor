@@ -19,15 +19,15 @@ export function PageLayout({
   const pathname = usePathname()
   
   // Determine if we're on the main task list page
-  const isTaskListPage = pathname === "/" || pathname === "/tasks"
+  const isTaskListPage = pathname === "/tasks"
 
   return (
     <div className="flex h-screen bg-slate-900 text-white">
-      {/* Navigation Sidebar - Always show but let the sidebar component handle its own visibility */}
+      {/* Navigation Sidebar - Only pass column control functions when on task list page */}
       <NavigationSidebar 
         isTaskListPage={isTaskListPage}
-        collapseAllColumnsOfType={collapseAllColumnsOfType}
-        expandAllColumnsOfType={expandAllColumnsOfType}
+        collapseAllColumnsOfType={isTaskListPage ? collapseAllColumnsOfType : undefined}
+        expandAllColumnsOfType={isTaskListPage ? expandAllColumnsOfType : undefined}
       />
       
       {/* Main Content */}

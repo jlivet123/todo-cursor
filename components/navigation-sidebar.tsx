@@ -202,7 +202,7 @@ export function NavigationSidebar({
         </div>
 
         {/* Column Controls - Only show on tasks page */}
-        {!isCollapsed && isTaskListPage && (
+        {isTaskListPage && !isCollapsed && (
           <div className="mt-4 border-t border-slate-700 pt-4">
             <h3 className="text-xs font-semibold text-slate-400 mb-2 uppercase">Column Controls</h3>
             <div className="space-y-1">
@@ -210,8 +210,8 @@ export function NavigationSidebar({
                 variant="outline" 
                 size="sm"
                 className="w-full text-xs h-7 border-slate-600 text-slate-300 justify-start mb-1"
-                onClick={() => collapseAllColumnsOfType && collapseAllColumnsOfType("personal")}
-                disabled={!isTaskListPage || !collapseAllColumnsOfType}
+                onClick={() => collapseAllColumnsOfType?.("personal")}
+                disabled={!collapseAllColumnsOfType}
               >
                 1. Collapse Personal
               </Button>
@@ -219,8 +219,8 @@ export function NavigationSidebar({
                 variant="outline" 
                 size="sm"
                 className="w-full text-xs h-7 border-slate-600 text-slate-300 justify-start mb-1"
-                onClick={() => expandAllColumnsOfType && expandAllColumnsOfType("personal")}
-                disabled={!isTaskListPage || !expandAllColumnsOfType}
+                onClick={() => expandAllColumnsOfType?.("personal")}
+                disabled={!expandAllColumnsOfType}
               >
                 2. Expand Personal
               </Button>
@@ -228,8 +228,8 @@ export function NavigationSidebar({
                 variant="outline" 
                 size="sm"
                 className="w-full text-xs h-7 border-slate-600 text-slate-300 justify-start mb-1"
-                onClick={() => collapseAllColumnsOfType && collapseAllColumnsOfType("work")}
-                disabled={!isTaskListPage || !collapseAllColumnsOfType}
+                onClick={() => collapseAllColumnsOfType?.("work")}
+                disabled={!collapseAllColumnsOfType}
               >
                 3. Collapse Work
               </Button>
@@ -237,8 +237,8 @@ export function NavigationSidebar({
                 variant="outline" 
                 size="sm"
                 className="w-full text-xs h-7 border-slate-600 text-slate-300 justify-start mb-1"
-                onClick={() => expandAllColumnsOfType && expandAllColumnsOfType("work")}
-                disabled={!isTaskListPage || !expandAllColumnsOfType}
+                onClick={() => expandAllColumnsOfType?.("work")}
+                disabled={!expandAllColumnsOfType}
               >
                 4. Expand Work
               </Button>
