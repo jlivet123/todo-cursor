@@ -1,20 +1,46 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { format, addDays, subDays, startOfToday, isBefore, isToday } from "date-fns"
+import { format, addDays, subDays, startOfToday, isBefore, isToday, isSameDay } from "date-fns"
+
+// Utility functions for consistent local date handling
+function createLocalDate(dateStr: string | undefined): Date | null {
+  if (!dateStr) return null;
+  
+  try {
+    // Parse the date string (yyyy-MM-dd format) into local date components
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+    
+    // Create a date at midnight in local timezone
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+  } catch (e) {
+    console.error('Error creating local date:', e);
+    return null;
+  }
+}
+
+function getLocalToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+}
+
+function isSameLocalDay(date1: Date | null | undefined, date2: Date | null | undefined): boolean {
+  if (!date1 || !date2) return false;
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+}
 import { type Task, getTasks, saveTask, deleteTaskFromSupabase, saveTasks } from "@/lib/storage"
 import { useAuth } from "@/lib/auth-context"
 import { isSupabaseConfigured, getSupabaseClient } from "@/lib/supabase"
 
-// Helper to ensure consistent date object creation
+// Deprecated - use createLocalDate instead
 function ensureDateObj(dateStr: string | undefined): Date | undefined {
-  if (!dateStr) return undefined;
-  try {
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? undefined : date;
-  } catch (e) {
-    return undefined;
-  }
+  const date = createLocalDate(dateStr);
+  return date || undefined;
 }
 
 interface DayWithTasks {
@@ -59,84 +85,118 @@ export function useTasks() {
 
   // Process tasks into days with proper date handling
   const processTasksIntoDays = (tasks: Task[]) => {
-    const today = startOfToday();
+    const today = getLocalToday();
     const newDays: DayWithTasks[] = [];
     
-    // Helper function to parse and compare dates
-    const isSameDay = (date1: Date, date2: Date) => {
-      return (
-        date1.getFullYear() === date2.getFullYear() &&
-        date1.getMonth() === date2.getMonth() &&
-        date1.getDate() === date2.getDate()
+    console.log('[DEBUG] ===== STARTING TASK PROCESSING =====');
+    console.log(`[DEBUG] Processing ${tasks.length} tasks`);
+    console.log(`[DEBUG] Today is: ${format(today, 'yyyy-MM-dd')}`);
+    
+    // Log all tasks with their complete state before any processing
+    console.group('[DEBUG] === TASK DUMP (BEFORE PROCESSING) ===');
+    console.log('Task ID'.padEnd(40), 'Text'.padEnd(30), 'Pos'.padEnd(4), 'Comp'.padEnd(5), 'Start Date'.padEnd(12), 'Due Date'.padEnd(12), 'Comp Date'.padEnd(12), 'Category');
+    console.log('-'.repeat(140));
+    
+    tasks.forEach((task, index) => {
+      console.log(
+        `${task.id}`.padEnd(40),
+        `${task.text.substring(0, 28)}${task.text.length > 28 ? '...' : ''}`.padEnd(30),
+        `${task.position}`.padEnd(4),
+        `${task.completed ? '✓' : '✗'}`.padEnd(5),
+        `${task.startDate || 'N/A'}`.padEnd(12),
+        `${task.dueDate || 'N/A'}`.padEnd(12),
+        `${task.completionDate || 'N/A'}`.padEnd(12),
+        task.category || 'N/A'
       );
-    };
-
+    });
+    console.groupEnd();
+    
+    // Log tasks with position 0 for debugging
+    console.group('[DEBUG] === TASKS WITH POSITION 0 ===');
+    const positionZeroTasks = tasks.filter(t => t.position === 0);
+    if (positionZeroTasks.length === 0) {
+      console.log('No tasks with position 0 found');
+    } else {
+      console.log(`Found ${positionZeroTasks.length} tasks with position 0:`);
+      positionZeroTasks.forEach((task, index) => {
+        console.log(`\n[${index + 1}] Task ID: ${task.id}`);
+        console.log(`   Text: ${task.text}`);
+        console.log(`   Completed: ${task.completed}`);
+        console.log(`   Start Date: ${task.startDate || 'Not set'}`);
+        console.log(`   Due Date: ${task.dueDate || 'Not set'}`);
+        console.log(`   Completion Date: ${task.completionDate || 'Not completed'}`);
+        console.log(`   Category: ${task.category || 'Not set'}`);
+      });
+    }
+    console.groupEnd();
+    
     // Create 7 days (today + 6 days)
     for (let i = 0; i < 7; i++) {
       const currentDate = addDays(today, i);
       const currentDateStr = format(currentDate, 'yyyy-MM-dd');
       
+      console.group(`[DEBUG] Processing day ${i} (${currentDateStr})`);
+      
       // Filter tasks for this day
       const dayTasks = tasks.filter(task => {
-        try {
-          // For completed tasks, check completion date
-          if (task.completed) {
-            if (!task.completionDate && !task.completionDateMMMD) return false;
-            
-            // Check ISO format first
-            if (task.completionDate) {
-              const completionDate = new Date(task.completionDate);
-              if (!isNaN(completionDate.getTime()) && isSameDay(completionDate, currentDate)) {
-                return true;
-              }
-            }
-            
-            // Check MMM d format if needed
-            if (task.completionDateMMMD) {
-              try {
-                const parsedDate = new Date(`${task.completionDateMMMD}, ${currentDate.getFullYear()}`);
-                if (!isNaN(parsedDate.getTime()) && isSameDay(parsedDate, currentDate)) {
-                  return true;
-                }
-              } catch (e) {
-                console.error('Error parsing completion date:', task.completionDateMMMD, e);
-              }
-            }
-            return false;
+        const taskInfo = {
+          id: task.id,
+          text: task.text,
+          completed: task.completed,
+          startDate: task.startDate,
+          completionDate: task.completionDate,
+          position: task.position,
+          included: false,
+          reason: ''
+        };
+        
+        // For completed tasks
+        if (task.completed && task.completionDate) {
+          const completionDate = createLocalDate(task.completionDate);
+          const isMatch = completionDate && isSameLocalDay(completionDate, currentDate);
+          if (isMatch) {
+            taskInfo.included = true;
+            taskInfo.reason = 'Completed task matching completion date';
           }
-          
-          // For incomplete tasks
-          if (i === 0) { // Today's column
-            // For today, show:
-            // 1. Tasks that have started (or have no start date)
-            // 2. Tasks that are overdue (due date is before today)
-            // 3. Tasks that are due today or have no due date
-            const hasStarted = !task.startDate || 
-              (task.startDate && new Date(task.startDate) <= currentDate);
-            
-            // Check if task is overdue (due date is in the past and not today)
-            const isOverdue = task.dueDate && 
-              new Date(task.dueDate) < today && 
-              !isToday(new Date(task.dueDate));
-            
-            // Check if task is due today or has no due date
-            const isDueTodayOrNoDue = !task.dueDate || isToday(new Date(task.dueDate));
-            
-            return hasStarted && (isOverdue || isDueTodayOrNoDue);
-          }
-          
-          // For future days, only show tasks with matching start date
-          if (task.startDate) {
-            const taskStartDate = new Date(task.startDate);
-            return !isNaN(taskStartDate.getTime()) && isSameDay(taskStartDate, currentDate);
-          }
-          
-          return false;
-        } catch (e) {
-          console.error('Error processing task:', task.id, e);
-          return false;
+          console.log(`Task ${task.id} (${task.text}): ${isMatch ? 'INCLUDED - ' + taskInfo.reason : 'EXCLUDED - Completed but no match'}`);
+          return isMatch;
         }
+        
+        // For today's column (i === 0)
+        if (i === 0) {
+          // If task has no start date, show in today
+          if (!task.startDate) {
+            taskInfo.included = true;
+            taskInfo.reason = 'No start date';
+            console.log(`Task ${task.id} (${task.text}): INCLUDED - ${taskInfo.reason}`);
+            return true;
+          }
+          
+          // Show tasks with start_date <= today
+          const startDate = createLocalDate(task.startDate);
+          const shouldShow = startDate && startDate <= today;
+          taskInfo.included = shouldShow;
+          taskInfo.reason = shouldShow ? `Start date (${task.startDate}) <= today` : `Start date (${task.startDate}) is in future`;
+          console.log(`Task ${task.id} (${task.text}): ${shouldShow ? 'INCLUDED' : 'EXCLUDED'} - ${taskInfo.reason}`);
+          return shouldShow;
+        }
+        
+        // For future days (i > 0)
+        if (!task.completed && task.startDate) {
+          const startDate = createLocalDate(task.startDate);
+          const isMatch = startDate && isSameLocalDay(startDate, currentDate);
+          taskInfo.included = isMatch;
+          taskInfo.reason = isMatch ? `Start date matches day ${i}` : `Start date doesn't match day ${i}`;
+          console.log(`Task ${task.id} (${task.text}): ${isMatch ? 'INCLUDED' : 'EXCLUDED'} - ${taskInfo.reason}`);
+          return isMatch;
+        }
+        
+        console.log(`Task ${task.id} (${task.text}): EXCLUDED - No matching conditions`);
+        return false;
       });
+      
+      console.log(`[DEBUG] Day ${i} (${currentDateStr}) has ${dayTasks.length} tasks`);
+      console.groupEnd();
       
       newDays.push({
         date: currentDate,

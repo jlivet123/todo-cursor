@@ -9,7 +9,163 @@ declare global {
 
 import React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
-import { format, isToday, isWeekend, isBefore } from "date-fns"
+import { format, isToday, isWeekend, isBefore, isSameDay } from "date-fns"
+
+// Find tasks with a specific position for debugging
+function findMissingTask(days: { date: Date; tasks: Task[]; isPast: boolean }[], targetPosition = 0) {
+  console.group("Searching for missing task with position " + targetPosition);
+  
+  const today = getLocalToday();
+  
+  days.forEach((day, dayIndex) => {
+    const isTodayColumn = isSameLocalDay(day.date, today);
+    
+    day.tasks.forEach(task => {
+      if (task.position === targetPosition) {
+        console.log(`Found position ${targetPosition} task:`, {
+          id: task.id,
+          text: task.text,
+          completed: task.completed,
+          startDate: task.startDate,
+          dueDate: task.dueDate,
+          category: task.category,
+          isOverdue: isTaskOverdue(task, today),
+          isTodo: isTaskTodo(task, day.date, today, day.isPast),
+          isCompleted: isTaskCompleted(task, day.date),
+          isTodayColumn: isTodayColumn,
+          dayIndex: dayIndex,
+          dayDate: format(day.date, "yyyy-MM-dd")
+        });
+      }
+    });
+  });
+  
+  console.groupEnd();
+}
+
+// Debug task information for a specific day
+function displayTaskDebug(dayIndex: number, days: { date: Date; tasks: Task[]; isPast: boolean }[]) {
+  if (!days[dayIndex]) return;
+  
+  const day = days[dayIndex];
+  const today = getLocalToday();
+  const currentDay = new Date(day.date);
+  currentDay.setHours(0, 0, 0, 0);
+  
+  console.group(`Tasks for ${format(currentDay, 'yyyy-MM-dd')} (${day.tasks.length} total)`);
+  
+  // Log all tasks
+  day.tasks.forEach(task => {
+    const taskState = [];
+    if (task.completed) taskState.push('Completed');
+    if (isTaskOverdue(task, today)) taskState.push('Overdue');
+    if (isTaskTodo(task, currentDay, today, day.isPast)) taskState.push('Todo');
+    if (isTaskCompleted(task, currentDay)) taskState.push('CompletedToday');
+    
+    console.log(`Task: ${task.text} (${task.id})`, {
+      category: task.category,
+      state: taskState.join(', '),
+      startDate: task.startDate,
+      dueDate: task.dueDate,
+      completionDate: task.completionDate,
+    });
+  });
+  
+  console.groupEnd();
+}
+
+// Debugging utility function for individual task logging
+function logTaskInfo(task: Task, bucket: string, reason: string) {
+  console.log(`Task "${task.text}" (${task.id}) in ${bucket}: ${reason}`, {
+    completed: task.completed,
+    startDate: task.startDate,
+    dueDate: task.dueDate,
+    completionDate: task.completionDate
+  });
+}
+
+// Task filtering utilities
+function createLocalDate(dateStr: string | undefined): Date | null {
+  if (!dateStr) return null;
+  try {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+  } catch (e) {
+    console.error('Error creating local date:', e);
+    return null;
+  }
+}
+
+function getLocalToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+}
+
+function isSameLocalDay(date1: Date | null | undefined, date2: Date | null | undefined): boolean {
+  if (!date1 || !date2) return false;
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+}
+
+// Check if a task is overdue
+function isTaskOverdue(task: Task, today: Date): boolean {
+  // Task must not be completed
+  if (task.completed) return false;
+  
+  // Must have a due date
+  if (!task.dueDate) return false;
+  
+  // Due date must be before today
+  const dueDate = createLocalDate(task.dueDate);
+  return dueDate ? dueDate < today : false;
+}
+
+// Check if a task belongs in the "todos" section for a given day
+function isTaskTodo(task: Task, dayDate: Date, today: Date, isPastDay: boolean): boolean {
+  // Task must not be completed
+  if (task.completed) return false;
+  
+  const isTodayView = isSameLocalDay(dayDate, today);
+  
+  // For today's column: show all tasks where startDate <= today
+  if (isTodayView) {
+    // If no start date, show in today's todos
+    if (!task.startDate) return true;
+    
+    // Check if start date <= today
+    const startDate = createLocalDate(task.startDate);
+    return startDate ? startDate <= today : false;
+  }
+  
+  // For future days: only show tasks with matching start date
+  if (dayDate > today) {
+    // Must have a start date matching this day
+    if (!task.startDate) return false;
+    
+    const startDate = createLocalDate(task.startDate);
+    return startDate ? isSameLocalDay(startDate, dayDate) : false;
+  }
+  
+  // For past days: don't show incomplete tasks
+  return false;
+}
+
+// Check if a task belongs in the "completed" section for a given day
+function isTaskCompleted(task: Task, dayDate: Date): boolean {
+  // Task must be completed
+  if (!task.completed) return false;
+  
+  // Must have completion date
+  if (!task.completionDate) return false;
+  
+  // Completion date must match this day
+  const completionDate = createLocalDate(task.completionDate);
+  return completionDate ? isSameLocalDay(completionDate, dayDate) : false;
+}
 
 // Extend the Window interface to include our custom property
 declare global {
@@ -58,7 +214,7 @@ import { useTasks } from "@/lib/hooks/use-tasks"
 import { useAuth } from "@/lib/auth-context"
 import { Skeleton } from "@/components/ui/skeleton"
 import { isSupabaseConfigured } from "@/lib/supabase"
-import { Task, Subtask, resetToSampleData } from "@/lib/storage"
+import { type Task, type Subtask, resetToSampleData } from "@/lib/storage"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -735,133 +891,53 @@ function CategoryColumn({
               "space-y-6 overflow-y-auto overflow-x-hidden flex-1 rounded-md p-2 transition-all duration-200",
               isOver && !isPastDay && "bg-slate-800/50 border border-dashed border-slate-600 shadow-inner",
               !isOver && !isPastDay && "hover:bg-slate-900/30"
-            )}>
+            )}
+          >
             {(() => {
-              // Section 1: Overdue
-              const isTodayDay = isToday(day.date);
-              const overdue = tasks.filter((task) => {
-                // We only show overdue tasks on today's column
-                if (!task.completed && task.dueDate && isTodayDay) {
-                  // Parse the due date as ISO format
-                  const dueDate = new Date(task.dueDate);
-                  const startOfToday = new Date(day.date);
-                  
-                  // Reset both to start of day for accurate comparison
-                  dueDate.setHours(0, 0, 0, 0);
-                  startOfToday.setHours(0, 0, 0, 0);
-                  
-                  // Task is overdue if due date is before today
-                  return dueDate.getTime() < startOfToday.getTime();
+              const today = getLocalToday();
+              const currentDay = new Date(day.date);
+              currentDay.setHours(0, 0, 0, 0);
+              const isTodayColumn = isSameLocalDay(currentDay, today);
+              
+              // Get tasks for each bucket
+              const overdueTasks = isTodayColumn 
+                ? tasks.filter(task => {
+                    const isOverdue = isTaskOverdue(task, today);
+                    if (isOverdue) {
+                      logTaskInfo(task, 'overdue', 'Task is past due date');
+                    }
+                    return isOverdue;
+                  })
+                : [];
+                
+              const todoTasks = tasks.filter(task => {
+                const isTodo = isTaskTodo(task, currentDay, today, isPastDay) && 
+                             !overdueTasks.some(ov => ov.id === task.id);
+                if (isTodo) {
+                  logTaskInfo(task, 'todos', 'Task is active and due/started today');
                 }
-                return false;
+                return isTodo;
+              });
+                
+              const completedTasks = tasks.filter(task => {
+                const isCompleted = isTaskCompleted(task, currentDay);
+                if (isCompleted) {
+                  logTaskInfo(task, 'completed', 'Task was completed on this day');
+                }
+                return isCompleted;
               });
               
-              // Only show unique overdue tasks (avoid showing the same task multiple times)
-              const overdueSeen = new Set();
-              const dedupedOverdue = overdue.filter((task) => {
-                const isDupe = overdueSeen.has(task.id);
-                overdueSeen.add(task.id);
-                return !isDupe;
-              });
-              
-              // Section 2: To-Dos
-              const todos = tasks.filter((task) => {
-                // Don't include completed tasks in to-dos
-                if (task.completed) return false;
-                
-                // Don't include overdue tasks in to-dos (they're in their own section)
-                if (task.dueDate && isTodayDay) {
-                  const dueDate = new Date(task.dueDate);
-                  const startOfToday = new Date(day.date);
-                  dueDate.setHours(0, 0, 0, 0);
-                  startOfToday.setHours(0, 0, 0, 0);
-                  
-                  if (dueDate.getTime() < startOfToday.getTime()) return false;
-                }
-                
-                // For today column
-                if (isTodayDay) {
-                  if (task.startDate) {
-                    const startDate = new Date(task.startDate);
-                    startDate.setHours(0, 0, 0, 0);
-                    
-                    const currentDate = new Date(day.date);
-                    currentDate.setHours(0, 0, 0, 0);
-                    
-                    // Show tasks with start date of today or earlier
-                    return startDate.getTime() <= currentDate.getTime();
-                  }
-                  return true; // Tasks with no start date also show under today
-                }
-                
-                // For future days, only show tasks with matching start date
-                if (!isTodayDay && !isPastDay) {
-                  const dayStr = format(day.date, "yyyy-MM-dd");
-                  return task.startDate === dayStr;
-                }
-                
-                // Rest of your existing filter logic for future days...
-              });
-              
-              // Section 3: Completed
-              // Tasks that were completed on this day
-              const completedTasks = tasks.filter((task) => {
-                if (!task.completed) return false;
-                
-                // Check both completionDate formats for maximum compatibility
-                const completionDate = task.completionDate || task.completionDateMMMD;
-                if (!completionDate) return false;
-                
-                try {
-                  // First try to parse as ISO date
-                  const completionDateObj = new Date(completionDate);
-                  
-                  // If it's a valid date, compare year, month, and day
-                  if (!isNaN(completionDateObj.getTime())) {
-                    const dayDate = new Date(day.date);
-                    return (
-                      completionDateObj.getFullYear() === dayDate.getFullYear() &&
-                      completionDateObj.getMonth() === dayDate.getMonth() &&
-                      completionDateObj.getDate() === dayDate.getDate()
-                    );
-                  }
-                  
-                  // Fallback to string comparison for MMM d format
-                  return completionDate === format(day.date, "MMM d");
-                } catch (e) {
-                  console.error("Error parsing completion date:", e);
-                  return false;
-                }
-                
-                return false;
-              });
-              
-              // Sort all tasks to ensure consistent ordering
-              const sortedTodos = [...todos].sort((a, b) => {
-                // Sort by due date
-                if (a.dueDate && !b.dueDate) return -1;
-                if (!a.dueDate && b.dueDate) return 1;
-                if (a.dueDate && b.dueDate) {
-                  return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-                }
-                
-                // Then sort by text (task title)
-                // Add null checks to handle tasks without text
-                const aText = a.text || "";
-                const bText = b.text || "";
-                return aText.localeCompare(bText);
-              });
-              
-              const taskSeen = new Set<string>();
+              // Track shown tasks to avoid duplicates
+              const shownTaskIds = new Set();
               
               return (
                 <>
-                  {dedupedOverdue.length > 0 && (
+                  {overdueTasks.length > 0 && (
                     <div>
                       <div className="text-purple-300 font-semibold text-sm mb-1">Overdue</div>
                       <div className="space-y-2">
-                        {dedupedOverdue.map((task, index) => {
-                          taskSeen.add(task.id);
+                        {overdueTasks.map((task, index) => {
+                          shownTaskIds.add(task.id);
                           return (
                             <DraggableTask
                               key={task.id}
@@ -882,14 +958,14 @@ function CategoryColumn({
                     </div>
                   )}
                   
-                  {sortedTodos.length > 0 && (
+                  {todoTasks.length > 0 && (
                     <div>
                       <div className="text-blue-300 font-semibold text-sm mb-1">To-Dos</div>
                       <div className="space-y-2">
-                        {sortedTodos.map((task, index) => {
-                          // Skip if we've already shown this task in the overdue section
-                          if (taskSeen.has(task.id)) return null;
-                          taskSeen.add(task.id);
+                        {todoTasks.map((task, index) => {
+                          // Skip tasks already shown in overdue
+                          if (shownTaskIds.has(task.id)) return null;
+                          shownTaskIds.add(task.id);
                           
                           return (
                             <DraggableTask
@@ -916,9 +992,9 @@ function CategoryColumn({
                       <div className="text-green-300 font-semibold text-sm mb-1">Completed</div>
                       <div className="space-y-2">
                         {completedTasks.map((task, index) => {
-                          // Skip if we've already shown this task in another section
-                          if (taskSeen.has(task.id)) return null;
-                          taskSeen.add(task.id);
+                          // Skip tasks already shown in other sections
+                          if (shownTaskIds.has(task.id)) return null;
+                          shownTaskIds.add(task.id);
                           
                           return (
                             <DraggableTask
@@ -1120,6 +1196,14 @@ export default function Tasks() {
     console.log("Task refresh complete. Current tasks count:", days.length > 0 ? 
       days.reduce((count, day) => count + day.tasks.length, 0) : 0);
   };
+
+  // Debug: Track tasks with position 0
+  useEffect(() => {
+    if (days.length > 0) {
+      console.log('Checking for tasks with position 0...');
+      findMissingTask(days, 0);
+    }
+  }, [days]);
   
   // Wrapper for updateTask to ensure consistent error handling and parameter format
   const updateTask = async (taskOrId: string | Task, updates?: Partial<Task>) => {
@@ -1386,18 +1470,18 @@ export default function Tasks() {
   const handleToggleCompletion = (taskId: string) => {    
     // Find the task in all days
     let taskToUpdate: Task | null = null
-    let taskDay: { date: Date; tasks: Task[]; isPast: boolean } | null = null
     
+    // Search through all days to find the task
     for (const day of days) {
       const foundTask = day.tasks.find((t) => t.id === taskId)
       if (foundTask) {
-        taskToUpdate = { ...foundTask }
-        taskDay = day
+        // Create a deep copy of the task to avoid mutating the original
+        taskToUpdate = JSON.parse(JSON.stringify(foundTask))
         break
       }
     }
     
-    if (!taskToUpdate || !taskDay) return;
+    if (!taskToUpdate) return;
 
     const newCompletionState = !taskToUpdate.completed
     
@@ -1405,28 +1489,32 @@ export default function Tasks() {
     taskToUpdate.completed = newCompletionState
     
     if (newCompletionState) {
-      // If completing the task, set completion date to today in ISO format
-      const today = new Date()
+      // If completing the task, set completion date to today in local time
+      const today = getLocalToday()
+      
+      // Set both date formats for compatibility
       taskToUpdate.completionDate = format(today, "yyyy-MM-dd")
-      // Also set the MMM d format for legacy compatibility
       taskToUpdate.completionDateMMMD = format(today, "MMM d")
+      
+      console.log(`Task "${taskToUpdate.text}" marked as completed on ${taskToUpdate.completionDate}`)
     } else {
-      // If uncompleting, remove dates
+      // If uncompleting, clear both date formats
       taskToUpdate.completionDate = undefined
       taskToUpdate.completionDateMMMD = undefined
+      console.log(`Task "${taskToUpdate.text}" marked as incomplete`)
     }
     
-    // Update localStorage
+    // Update the task in the database
+    updateTask(taskToUpdate)
+    
+    // Also update localStorage for offline support
     const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks"
     const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]")
     
     // Find and update the task in storage
-    const updatedStoredTasks = storedTasks.map((t: Task) => {
-      if (t.id === taskToUpdate?.id) {
-        return taskToUpdate;
-      }
-      return t
-    })
+    const updatedStoredTasks = storedTasks.map((t: Task) => 
+      t.id === taskToUpdate?.id ? taskToUpdate : t
+    )
     
     // Save to localStorage
     localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks))
