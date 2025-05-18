@@ -31,8 +31,16 @@ interface Task {
   subtasks: Subtask[]
   timeDisplay?: string
   description?: string
-  startDate?: string
-  dueDate?: string
+  // Date fields in ISO format (YYYY-MM-DD)
+  startDate: string
+  dueDate: string
+  position?: number
+  // Completion tracking
+  completionDate?: string           // ISO format (YYYY-MM-DD)
+  completionDateMMMD?: string      // Legacy format (MMM d)
+  completionDateObj?: Date | null  // Date object for calculations
+  // Day field for filtering
+  day?: string                     // ISO format (YYYY-MM-DD)
   startDateObj?: Date | null
   dueDateObj?: Date | null
 }
@@ -57,11 +65,31 @@ export function TaskModal({ task, isOpen, onClose, onSave, onDelete, isPastDay =
   // Initialize edited task when modal opens
   useEffect(() => {
     if (task) {
-      setEditedTask({
-        ...task,
-        startDateObj: task.startDate ? new Date(task.startDate) : null,
-        dueDateObj: task.dueDate ? new Date(task.dueDate) : null,
-      })
+      const today = new Date().toISOString().split('T')[0];
+      // Create a new task object with all required fields
+      const newTask: Task = {
+        // Required fields with defaults
+        id: task.id,
+        text: task.text,
+        completed: Boolean(task.completed),
+        category: task.category || 'personal',
+        subtasks: task.subtasks || [],
+        startDate: task.startDate || today,
+        dueDate: task.dueDate || today,
+        position: task.position || 0,
+        // Optional fields with defaults
+        time: task.time || '',
+        timeDisplay: task.timeDisplay || '',
+        description: task.description || '',
+        completionDate: task.completionDate || '',
+        completionDateMMMD: task.completionDateMMMD || '',
+        day: task.day || today,
+        // Initialize date objects
+        startDateObj: task.startDate ? new Date(task.startDate) : new Date(today),
+        dueDateObj: task.dueDate ? new Date(task.dueDate) : new Date(today),
+        completionDateObj: task.completionDateObj || null
+      };
+      setEditedTask(newTask);
     }
   }, [task])
 
@@ -196,37 +224,43 @@ export function TaskModal({ task, isOpen, onClose, onSave, onDelete, isPastDay =
   }
 
   const handleStartDateSelect = (date: Date | null) => {
+    if (!date) return;
+    const dateString = format(date, "yyyy-MM-dd");
     setEditedTask({
       ...editedTask,
+      startDate: dateString,
       startDateObj: date,
-      startDate: date ? format(date, "MMM d") : undefined,
     });
     setIsStartDatePickerOpen(false);
   }
 
   const handleDueDateSelect = (date: Date | null) => {
+    if (!date) return;
+    const dateString = format(date, "yyyy-MM-dd");
     setEditedTask({
       ...editedTask,
+      dueDate: dateString,
       dueDateObj: date,
-      dueDate: date ? format(date, "yyyy-MM-dd") : undefined,
     });
     setIsDueDatePickerOpen(false);
   }
 
   const handleDeleteStartDate = () => {
+    const today = new Date().toISOString().split('T')[0];
     setEditedTask({
       ...editedTask,
-      startDateObj: null,
-      startDate: undefined,
+      startDate: today,
+      startDateObj: new Date(today),
     });
     setIsStartDatePickerOpen(false);
   }
 
   const handleDeleteDueDate = () => {
+    const today = new Date().toISOString().split('T')[0];
     setEditedTask({
       ...editedTask,
-      dueDateObj: null,
-      dueDate: undefined,
+      dueDate: today,
+      dueDateObj: new Date(today),
     });
     setIsDueDatePickerOpen(false);
   }

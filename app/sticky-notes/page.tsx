@@ -1,23 +1,22 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { SimplifiedStickyNote } from "@/components/simplified-sticky-note"
-import { AddStickyNote } from "@/components/add-sticky-note"
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { SimplifiedStickyNote } from "@/components/simplified-sticky-note";
+import { AddStickyNote } from "@/components/add-sticky-note";
 import { 
   getStickyNotes, 
   saveStickyNote, 
   deleteStickyNote, 
-  getCurrentUserId,
   getStickyNoteCategories,
   StickyNote as StickyNoteType,
   StickyNoteBase,
   StickyNoteCategory,
   ensureUserHasCategories
-} from "@/lib/storage"
-import { PlusCircle, Loader2, RefreshCw } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { NavigationSidebar } from '@/components/navigation-sidebar'
-import { useAuthStatus } from "@/lib/auth-context"
+} from "@/lib/storage";
+import { PlusCircle, Loader2, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuthStatus } from "@/lib/auth-context";
+import { PageLayout } from "@/components/page-layout";
 
 export default function StickyNotesPage() {
   const [notes, setNotes] = useState<StickyNoteType[]>([]);
@@ -78,14 +77,11 @@ export default function StickyNotesPage() {
       // Load notes
       const fetchedNotes = await getStickyNotes(userId);
       
-      // Map notes to include category names using the just-fetched categories
+      // Map notes to include category names
       const notesWithCategoryNames = fetchedNotes.map(note => {
-        // Find the matching category
         const matchingCategory = fetchedCategories.find(cat => cat.id === note.category_id);
-        
         return {
           ...note,
-          // Use the category name from the matching category, or 'Uncategorized' as fallback
           category: matchingCategory ? matchingCategory.name : 'Uncategorized'
         };
       });
@@ -99,70 +95,13 @@ export default function StickyNotesPage() {
     }
   }, [isAuthenticated, userId]);
   
-  // Update note categories whenever notes or categories change
-  useEffect(() => {
-    if (notes.length > 0 && categories.length > 0) {
-      // Map categories to notes
-      const updatedNotes = notes.map(note => {
-        // Find the matching category
-        const category = categories.find(cat => cat.id === note.category_id);
-        
-        // If the note's category is already correct, don't update it
-        if (note.category === (category?.name || 'Uncategorized')) {
-          return note;
-        }
-        
-        // Otherwise, return the note with the updated category
-        return {
-          ...note,
-          category: category ? category.name : 'Uncategorized'
-        };
-      });
-      
-      // Only update if there's a difference to prevent infinite loops
-      if (JSON.stringify(notes) !== JSON.stringify(updatedNotes)) {
-        setNotes(updatedNotes);
-      }
-    }
-  }, [notes, categories]);
-
-  // Debug logging for categories and notes
-  useEffect(() => {
-    if (categories.length > 0) {
-      console.log('Categories changed:', categories.map(cat => ({
-        id: cat.id,
-        name: cat.name,
-        color: cat.color,
-        noteCount: noteCounts[cat.id] || 0
-      })));
-    }
-    
-    if (notes.length > 0) {
-      console.log('Notes with categories:', notes.map(note => ({
-        id: note.id,
-        content: note.content.substring(0, 20) + (note.content.length > 20 ? '...' : ''),
-        category_id: note.category_id,
-        category: note.category,
-        updated_at: note.updated_at
-      })));
-    }
-  }, [categories, notes, noteCounts]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleAddNoteClick = () => {
-    setIsAddingNote(true);
-  };
-
+  // Handle adding a new note
   const handleAddNote = async (content: string, color: string, categoryId: string) => {
     if (!isAuthenticated || !userId) {
       console.error('Cannot add note: User not authenticated');
       return;
     }
     
-    // Find the category to get its name
     const category = categories.find(cat => cat.id === categoryId);
     if (!category) {
       console.error('Selected category not found');
@@ -170,7 +109,7 @@ export default function StickyNotesPage() {
     }
     
     try {
-      const now = new Date().toISOString()
+      const now = new Date().toISOString();
       const newNote: Omit<StickyNoteBase, 'id'> = {
         user_id: userId,
         content,
@@ -184,12 +123,10 @@ export default function StickyNotesPage() {
         is_archived: false,
         created_at: now,
         updated_at: now
-      }
+      };
 
-      // Pass the userId explicitly
       const savedNote = await saveStickyNote(newNote, userId);
       if (savedNote) {
-        // Include the category name in the saved note
         const savedNoteWithCategory = {
           ...savedNote,
           category: category?.name || 'Uncategorized'
@@ -198,41 +135,22 @@ export default function StickyNotesPage() {
       }
       setIsAddingNote(false);
     } catch (error) {
-      console.error('Error adding note:', error)
+      console.error('Error adding note:', error);
     }
-  }
+  };
 
-  const handleDeleteNote = async (id: string) => {
-    if (!isAuthenticated || !userId) {
-      console.error('Cannot delete note: User not authenticated');
-      return false;
-    }
-    
-    try {
-      const success = await deleteStickyNote(id, userId);
-      if (success) {
-        setNotes(prevNotes => prevNotes.filter(note => note.id !== id));
-      }
-      return success;
-    } catch (error) {
-      console.error('Error deleting note:', error);
-      return false;
-    }
-  }
-
-  const handleUpdateNote = async (id: string, content: string, categoryId?: string) => {
+  // Handle updating a note
+  const handleUpdateNote = useCallback(async (id: string, content: string, categoryId?: string) => {
     if (!isAuthenticated || !userId) {
       console.error('Cannot update note: User not authenticated');
-      return;
+      return false;
     }
     
     try {
-      console.log(`[handleUpdateNote] Starting update for note ${id} with categoryId: ${categoryId}`);
-      
       const noteToUpdate = notes.find(note => note.id === id);
       if (!noteToUpdate) {
-        console.error(`[handleUpdateNote] Note with id ${id} not found`);
-        return;
+        console.error(`Note with id ${id} not found`);
+        return false;
       }
       
       // If category is being updated, find its name
@@ -242,15 +160,13 @@ export default function StickyNotesPage() {
       if (categoryId) {
         const category = categories.find(cat => cat.id === categoryId);
         if (category) {
-          console.log(`[handleUpdateNote] Found category ${category.name} for ID ${categoryId}`);
           categoryName = category.name;
           categoryIdToUse = categoryId;
         } else {
-          console.warn(`[handleUpdateNote] Category with id ${categoryId} not found`);
+          console.warn(`Category with id ${categoryId} not found`);
         }
       }
       
-      // Create a complete note object with all required fields
       const updates: Partial<StickyNoteType> = {
         id,
         user_id: userId,
@@ -268,23 +184,9 @@ export default function StickyNotesPage() {
         category: categoryName || 'Uncategorized'
       };
       
-      console.log('[handleUpdateNote] Updating note with data:', {
-        id: updates.id,
-        content: updates.content,
-        category_id: updates.category_id,
-        category: updates.category
-      });
-      
-      // Pass the userId explicitly
       const updatedNote = await saveStickyNote(updates, userId);
       
       if (updatedNote) {
-        console.log('[handleUpdateNote] Successfully updated note:', {
-          id: updatedNote.id,
-          category_id: updatedNote.category_id
-        });
-        
-        // Include the category name in the updated note
         const updatedNoteWithCategory = {
           ...updatedNote,
           category: categoryName || 'Uncategorized'
@@ -296,115 +198,130 @@ export default function StickyNotesPage() {
         
         return true;
       }
+      return false;
     } catch (error) {
       console.error('Error updating note:', error);
+      return false;
+    }
+  }, [isAuthenticated, userId, notes, categories]);
+
+  // Handle deleting a note
+  const handleDeleteNote = async (id: string) => {
+    if (!isAuthenticated || !userId) {
+      console.error('Cannot delete note: User not authenticated');
+      return false;
+    }
+    
+    try {
+      const success = await deleteStickyNote(id, userId);
+      if (success) {
+        setNotes(prevNotes => prevNotes.filter(note => note.id !== id));
+      }
+      return success;
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      return false;
     }
   };
 
-  const handleCategoryChange = (id: string, newCategory: string) => {
-    handleUpdateNote(id, notes.find(note => note.id === id)?.content || '', newCategory);
-  };
+  // Handle category change for a note
+  const handleCategoryChange = useCallback(async (id: string, newCategory: string) => {
+    try {
+      const noteToUpdate = notes.find(note => note.id === id);
+      if (noteToUpdate) {
+        await handleUpdateNote(id, noteToUpdate.content, newCategory);
+      }
+    } catch (error) {
+      console.error('Error updating note category:', error);
+    }
+  }, [notes, handleUpdateNote]);
+
+  // Load data on component mount
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Filter notes by selected category
+  const filteredNotes = useMemo(() => {
+    if (!selectedCategory) return notes;
+    return notes.filter(note => note.category_id === selectedCategory);
+  }, [notes, selectedCategory]);
 
   return (
-    <div className="flex h-screen">
-      <NavigationSidebar />
-      <div className="flex-1 p-6 overflow-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Sticky Notes</h1>
-          <Button 
-            onClick={handleAddNoteClick} 
-            disabled={isLoading}
-            className="flex items-center gap-2"
-          >
-            <PlusCircle className="h-4 w-4" />
-            <span>Add Note</span>
-          </Button>
-        </div>
-
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin" />
+    <PageLayout>
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Sticky Notes</h1>
+            <Button 
+              onClick={() => setIsAddingNote(true)}
+              disabled={isLoading}
+              className="flex items-center gap-2"
+            >
+              <PlusCircle className="h-4 w-4" />
+              <span>Add Note</span>
+            </Button>
           </div>
-        ) : error ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="text-center">
-              <p className="text-red-500 mb-4">{error}</p>
-              <Button onClick={loadData} className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4" />
-                <span>Try Again</span>
-              </Button>
+
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+              {error}
             </div>
-          </div>
-        ) : (
-          <>
-            {/* Category Tabs */}
-            {categories.length > 0 && (
-              <div className="mt-4 mb-6">
-                <div className="flex space-x-2 overflow-x-auto pb-2">
-                  {categories.map((category) => (
-                    <button
-                      key={category.id}
-                      onClick={() => setSelectedCategory(category.id)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                        selectedCategory === category.id 
-                          ? 'text-primary-foreground' 
-                          : 'bg-secondary hover:bg-secondary/80'
-                      }`}
-                      style={{
-                        backgroundColor: selectedCategory === category.id ? category.color : undefined,
-                        color: selectedCategory === category.id ? '#000' : undefined
-                      }}
-                    >
-                      {category.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+          )}
 
-            {/* Notes Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {notes.length === 0 ? (
-                <div className="col-span-full text-center py-12 text-muted-foreground">
-                  <p className="mb-4">No notes found</p>
-                  <Button onClick={() => setIsAddingNote(true)}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Create your first note
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* Category Filter */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {categories.map(category => (
+                  <Button
+                    key={category.id}
+                    variant={selectedCategory === category.id ? 'default' : 'outline'}
+                    onClick={() => setSelectedCategory(category.id)}
+                    className="flex items-center gap-2"
+                  >
+                    <span>{category.name}</span>
+                    <span className="bg-primary/20 text-primary-foreground rounded-full px-2 py-0.5 text-xs">
+                      {noteCounts[category.id] || 0}
+                    </span>
                   </Button>
-                </div>
-              ) : (
-                notes
-                  .filter(note => 
-                    !selectedCategory || 
-                    selectedCategory === 'All' || 
-                    note.category_id === selectedCategory
-                  )
-                  .map((note) => (
-                    <SimplifiedStickyNote
-                      key={note.id}
-                      note={note}
-                      onDelete={handleDeleteNote}
-                      onUpdate={handleUpdateNote}
-                      onCategoryChange={(id, newCategory) => {
-                        handleUpdateNote(id, note.content, newCategory);
-                      }}
-                    />
-                  ))
-              )}
-            </div>
-          </>
-        )}
+                ))}
+              </div>
+
+              {/* Notes Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredNotes.map(note => (
+                  <SimplifiedStickyNote
+                    key={note.id}
+                    note={{
+                      ...note,
+                      color: note.color || '#fff9c4',
+                      category: note.category || 'Uncategorized'
+                    }}
+                    onDelete={() => handleDeleteNote(note.id)}
+                    onUpdate={(id, content, categoryId) => handleUpdateNote(id, content, categoryId)}
+                    onCategoryChange={(id, categoryId) => handleCategoryChange(id, categoryId)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Add Note Dialog */}
+          <AddStickyNote
+            open={isAddingNote}
+            onOpenChange={setIsAddingNote}
+            onAddNote={handleAddNote}
+            categories={categories}
+            defaultCategoryId={selectedCategory || undefined}
+            noteCounts={noteCounts}
+          />
+        </div>
       </div>
-      
-      {/* Add Note Modal */}
-      <AddStickyNote
-        open={isAddingNote}
-        onOpenChange={setIsAddingNote}
-        onAddNote={handleAddNote}
-        categories={categories}
-        defaultCategoryId={selectedCategory || undefined}
-        noteCounts={noteCounts}
-      />
-    </div>
+    </PageLayout>
   );
 }

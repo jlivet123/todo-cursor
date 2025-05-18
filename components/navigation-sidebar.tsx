@@ -201,8 +201,8 @@ export function NavigationSidebar({
           </Button>
         </div>
 
-        {/* Column Controls - Always shown instead of only on tasks page */}
-        {!isCollapsed && (
+        {/* Column Controls - Only show on tasks page */}
+        {!isCollapsed && isTaskListPage && (
           <div className="mt-4 border-t border-slate-700 pt-4">
             <h3 className="text-xs font-semibold text-slate-400 mb-2 uppercase">Column Controls</h3>
             <div className="space-y-1">

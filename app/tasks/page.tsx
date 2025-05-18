@@ -1161,6 +1161,42 @@ const MobileHeader = ({ onMenuClick, isMenuOpen }: { onMenuClick: () => void, is
 // Tasks main component
 export default function Tasks() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [collapsedColumns, setCollapsedColumns] = useState({
+    personal: [] as boolean[],
+    work: [] as boolean[]
+  });
+
+  // Get tasks and task management functions from the useTasks hook
+  const {
+    days = [],
+    isLoading,
+    createTask: createTaskInHook,
+    updateTask: updateTaskInHook,
+    deleteTask,
+    moveTask: handleMove,
+  } = useTasks();
+
+  // Local state for new task inputs
+  const [personalNewTaskTexts, setPersonalNewTaskTexts] = useState<string[]>([]);
+  const [workNewTaskTexts, setWorkNewTaskTexts] = useState<string[]>([]);
+  const [personalNewTaskOpen, setPersonalNewTaskOpen] = useState<boolean[]>([]);
+  const [workNewTaskOpen, setWorkNewTaskOpen] = useState<boolean[]>([]);
+
+  // Initialize local states based on days
+  useEffect(() => {
+    if (days.length > 0) {
+      setPersonalNewTaskTexts(Array(days.length).fill(''));
+      setWorkNewTaskTexts(Array(days.length).fill(''));
+      setPersonalNewTaskOpen(Array(days.length).fill(false));
+      setWorkNewTaskOpen(Array(days.length).fill(false));
+      setCollapsedColumns({
+        personal: Array(days.length).fill(false),
+        work: Array(days.length).fill(false)
+      });
+    }
+  }, [days.length]);
   
   // Close mobile menu when clicking outside
   useEffect(() => {
@@ -1177,672 +1213,287 @@ export default function Tasks() {
     };
   }, [isMobileMenuOpen]);
   
-  // Prevent body scroll when mobile menu is open
+  // Initialize collapsed columns state
   useEffect(() => {
-    if (isMobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+    if (days.length > 0 && collapsedColumns.personal.length !== days.length) {
+      setCollapsedColumns({
+        personal: Array(days.length).fill(false),
+        work: Array(days.length).fill(false)
+      });
     }
-    
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isMobileMenuOpen]);
+  }, [days.length]);
   
-  // Collapse/expand all columns functions
+  // Column collapse/expand functions
   const collapseAllColumnsOfType = (columnType: "personal" | "work") => {
-    // Implementation depends on your column state management
-    // This is a placeholder - replace with your actual implementation
-    console.log(`Collapse all ${columnType} columns`);
+    setCollapsedColumns(prev => ({
+      ...prev,
+      [columnType]: Array(prev[columnType].length || days.length).fill(true)
+    }));
   };
 
   const expandAllColumnsOfType = (columnType: "personal" | "work") => {
-    // Implementation depends on your column state management
-    // This is a placeholder - replace with your actual implementation
-    console.log(`Expand all ${columnType} columns`);
-  };
-  const [localLoading, setLocalLoading] = useState(true);
-  const { 
-    days, 
-    isLoading, 
-    error, 
-    refreshTasks: originalRefreshTasks, 
-    createTask,
-    updateTask: updateTaskFromHook, 
-    deleteTask, 
-    moveTask: moveTaskFromHook
-  } = useTasks();
-  
-  // Enhanced refresh function with debug logging
-  const refreshTasks = async () => {
-
+    setCollapsedColumns(prev => ({
+      ...prev,
+      [columnType]: Array(prev[columnType].length || days.length).fill(false)
+    }));
   };
 
-  // Wrapper for updateTask to ensure consistent error handling and parameter format
-  const updateTask = async (taskOrId: string | Task, updates?: Partial<Task>) => {
-    try {
-      let taskId: string;
-      let taskUpdates: Partial<Task>;
-      
-      // Handle both parameter formats for backward compatibility
-      if (typeof taskOrId === 'string') {
-        // Called with (taskId, updates)
-        taskId = taskOrId;
-        taskUpdates = updates || {};
-      } else {
-        // Called with (task)
-        const task = taskOrId as Task;
-        taskId = task.id;
-        taskUpdates = { ...task };
-        delete taskUpdates.id; // Remove id from updates to prevent issues
-      }
-      
-      const result = await updateTaskFromHook(taskId, taskUpdates);
-      
-      if (result) {
-        showNotification("Task updated successfully", "success");
-      } else {
-        throw new Error("Failed to update task: no result returned");
-      }
-      
-      return result;
-    } catch (error) {
-      console.error("Error updating task:", error);
-      showNotification("Failed to update task", "error");
-      return null;
-    }
-  };
-  
-  // Initialize window.lastTaskMoveTime if it doesn't exist
-  if (typeof window !== 'undefined' && window.lastTaskMoveTime === undefined) {
-    window.lastTaskMoveTime = 0;
-  }
-  const { user } = useAuth();
-  const router = useRouter();
-  
-  // State for the modal and notifications
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [notification, setNotification] = useState<{
-    message: string;
-    type: 'success' | 'error' | 'info';
-    visible: boolean;
-  } | null>(null);
-  
-  // Function to show a notification
-  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setNotification({ message, type, visible: true });
-    
-    // Auto-hide notification after 3 seconds
-    const timer = setTimeout(() => {
-      setNotification(prev => prev ? { ...prev, visible: false } : null);
-    }, 3000);
-    
-    return () => clearTimeout(timer);
-  };
-  
-  // Function to hide the notification
-  const hideNotification = () => {
-    setNotification(null);
-  };
-  
-  // Enhanced move task function with error handling and notifications
-  const handleMove = async (
-    dragIndex: number,
-    hoverIndex: number,
-    fromDayIndex: number,
-    toDayIndex: number,
-    fromColumnType: "personal" | "work",
-    toColumnType: "personal" | "work",
-    taskId?: string
-  ) => {
-    // Don't attempt to move tasks while the app is in a loading state
-    if (isLoading) {
-      showNotification("Please wait while tasks are loading...", "info");
-      return false;
-    }
-    
-    try { 
-      // Set the lastTaskMoveTime to prevent auto-refresh
-      window.lastTaskMoveTime = Date.now();
-      
-      // Type assertion for the moveTaskFromHook function
-      const moveTaskFn = moveTaskFromHook as (
-        dragIndex: number,
-        hoverIndex: number,
-        fromDayIndex: number,
-        toDayIndex: number,
-        fromColumnType: "personal" | "work",
-        toColumnType: "personal" | "work",
-        taskId?: string
-      ) => Promise<Task | null>;
-      
-      // Call the function from the hook
-      const result = await moveTaskFn(
-        dragIndex,
-        hoverIndex,
-        fromDayIndex, 
-        toDayIndex,
-        fromColumnType,
-        toColumnType,
-        taskId
-      ).catch(err => {
-        console.error('Error in moveTask:', err);
-        throw err; // Re-throw to be caught by the outer catch
-      });
-      
-      if (!result) {
-        const errorMsg = 'Failed to move task: No result returned from moveTask';
-        console.error(errorMsg);
-        showNotification(errorMsg, "error");
-        return false;
-      }
-      
-      // Show success notification for important moves (day changes)
-      if (fromDayIndex !== toDayIndex || fromColumnType !== toColumnType) {
-        showNotification("Task moved successfully", "success");
-        
-        // After 3 seconds, do a refresh to ensure everything is in sync
-        setTimeout(async () => {
-          await refreshTasks();
-        }, 3000);
-      }
-      
-      return true;
-    } catch (err) {
-      console.error("Error in handleMove:", err);
-      showNotification("An error occurred while moving the task.", "error");
-      return false;
-    }
-  };
-  
-  // State for day columns
-  const [visibleDays, setVisibleDays] = useState(days);
-  const [currentDayIndex, setCurrentDayIndex] = useState(0);
-  
-  // State for new task input
-  const [personalNewTaskOpen, setPersonalNewTaskOpen] = useState<boolean[]>(
-    Array(days.length || 7).fill(false)
-  );
-  const [workNewTaskOpen, setWorkNewTaskOpen] = useState<boolean[]>(
-    Array(days.length || 7).fill(false)
-  );
-  const [personalNewTaskTexts, setPersonalNewTaskTexts] = useState<string[]>(Array(7).fill(''));
-  const [workNewTaskTexts, setWorkNewTaskTexts] = useState<string[]>(Array(7).fill(''));
-  
-  // State for collapsed columns
-  const [personalCollapsed, setPersonalCollapsed] = useState<boolean[]>(Array(7).fill(false));
-  const [workCollapsed, setWorkCollapsed] = useState<boolean[]>(Array(7).fill(false));
-  
-  // Log when days change
-  useEffect(() => {
-    if (days && days.length > 0) {
-      setVisibleDays(days);
-    }
-  }, [days]);
-  
-  // Ensure arrays are correctly sized when days change
-  useEffect(() => {
-    if (days.length > 0) {
-      // Resize the array when days change
-      if (personalNewTaskOpen.length !== days.length) {
-        setPersonalNewTaskOpen(Array(days.length).fill(false));
-      }
-      if (workNewTaskOpen.length !== days.length) {
-        setWorkNewTaskOpen(Array(days.length).fill(false));
-      }
-    }
-  }, [days.length, personalNewTaskOpen.length, workNewTaskOpen.length]);
-  
-  // Helper function to toggle column collapse state
-  const toggleColumnCollapse = (dayIndex: number, columnType: "personal" | "work") => {
-    if (columnType === "personal") {
-      const newCollapsedState = [...personalCollapsed];
-      newCollapsedState[dayIndex] = !newCollapsedState[dayIndex];
-      setPersonalCollapsed(newCollapsedState);
-    } else {
-      const newCollapsedState = [...workCollapsed];
-      newCollapsedState[dayIndex] = !newCollapsedState[dayIndex];
-      setWorkCollapsed(newCollapsedState);
-    }
-  };
-  
-  // Update local loading state with a delay to prevent flash
-  useEffect(() => {
-    if (!isLoading && days.length > 0) {
-      // Once we have data, clear loading state after a short delay
-      const timer = setTimeout(() => {
-        setLocalLoading(false);
-      }, 100);
-      return () => clearTimeout(timer);
-    } else if (isLoading) {
-      // Only show loading state if it persists for more than 1000ms
-      // This prevents flashing during quick operations like drag and drop
-      const timer = setTimeout(() => {
-        if (isLoading) {
-          setLocalLoading(true);
-        }
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading, days]);
-  
-  // Update visible days when days changes
-  useEffect(() => {
-    if (days && days.length > 0) {
-      // Always update visibleDays when days changes, immediately
-      setVisibleDays(days);
-     }
-  }, [days]);
-  
-  // Custom refresh function to update UI without showing loading state
-  const handleRefresh = async () => {
-    // Don't set loading state to true immediately to avoid flickering
-    await refreshTasks();
-  };
-  
-  // Function to handle task category changes
-  const handleTaskCategoryChange = async (task: Task) => {
-    try {
-      // Update the task in the database
-      await updateTask(task.id, { ...task });
-      showNotification("Task category updated", "success");
-    } catch (err) {
-      console.error("Error updating task category:", err);
-      showNotification("Failed to update task category", "error");
-    }
+  const toggleColumnCollapse = (columnType: 'personal' | 'work', dayIndex: number) => {
+    setCollapsedColumns(prev => ({
+      ...prev,
+      [columnType]: prev[columnType].map((col, idx) => 
+        idx === dayIndex ? !col : col
+      )
+    }));
   };
 
-  // Function to handle task clicks
+  // Task click handler
   const handleTaskClick = (taskId: string) => {
-    // Find the task in all days
+    // Find the task in any day's tasks
     for (const day of days) {
-      const task = day.tasks.find((t) => t.id === taskId);
+      const task = day.tasks.find(t => t.id === taskId);
       if (task) {
         setSelectedTask(task);
         setIsTaskModalOpen(true);
-        return;
-      }
-    }
-  }
-  
-  // Function to handle toggling task completion
-  const handleToggleCompletion = (taskId: string) => {    
-    // Find the task in all days
-    let taskToUpdate: Task | null = null
-    
-    // Search through all days to find the task
-    for (const day of days) {
-      const foundTask = day.tasks.find((t) => t.id === taskId)
-      if (foundTask) {
-        // Create a deep copy of the task to avoid mutating the original
-        taskToUpdate = JSON.parse(JSON.stringify(foundTask))
-        break
-      }
-    }
-    
-    if (!taskToUpdate) return;
-
-    const newCompletionState = !taskToUpdate.completed
-    
-    // Update completion state and date
-    taskToUpdate.completed = newCompletionState
-    
-    if (newCompletionState) {
-      // If completing the task, set completion date to today in local time
-      const today = getLocalToday()
-      
-      // Set both date formats for compatibility
-      taskToUpdate.completionDate = format(today, "yyyy-MM-dd")
-      taskToUpdate.completionDateMMMD = format(today, "MMM d")
-      
-    } else {
-      // If uncompleting, clear both date formats
-      taskToUpdate.completionDate = undefined
-      taskToUpdate.completionDateMMMD = undefined
-    }
-    
-    // Update the task in the database
-    updateTask(taskToUpdate)
-    
-    // Also update localStorage for offline support
-    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks"
-    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]")
-    
-    // Find and update the task in storage
-    const updatedStoredTasks = storedTasks.map((t: Task) => 
-      t.id === taskToUpdate?.id ? taskToUpdate : t
-    )
-    
-    // Save to localStorage
-    localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks))
-    
-    // Update the task in the database if applicable
-    if (isSupabaseConfigured() && taskToUpdate.id) {
-      updateTask(taskToUpdate).catch(error => {
-        console.error('Error updating task in database:', error);
-      });
-    }
-    
-    // Refresh tasks to update the UI
-    refreshTasks();
-  }
-  
-  // Function to add a new task
-  const handleAddNewTask = async (dayIndex: number, columnType: "personal" | "work") => {
-    try {
-      // Get the text input value
-      const text = columnType === "personal" 
-        ? personalNewTaskTexts[dayIndex]
-        : workNewTaskTexts[dayIndex];
-      
-      // Validate input
-      if (!text.trim()) return;
-      
-      // Show loading notification
-      showNotification("Creating task...", "info");
-      
-      // Use the createTask function from the hook which handles saving and UI updates
-      const savedTask = await createTask(text.trim(), dayIndex, columnType);
-      
-      if (!savedTask) {
-        throw new Error("Failed to create task");
-      }
-      
-      // Manual localStorage backup to ensure the task is persisted
-      const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
-      const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      const taskExists = storedTasks.some((t: Task) => t.id === savedTask.id);
-
-      if (!taskExists) {
-        storedTasks.push(savedTask);
-        localStorage.setItem(storageKey, JSON.stringify(storedTasks));
-      }
-      
-      // Clear the input but keep it open for the next task
-      if (columnType === "personal") {
-        const updatedTexts = [...personalNewTaskTexts];
-        updatedTexts[dayIndex] = '';
-        setPersonalNewTaskTexts(updatedTexts);
-      } else {
-        const updatedTexts = [...workNewTaskTexts];
-        updatedTexts[dayIndex] = '';
-        setWorkNewTaskTexts(updatedTexts);
-      }
-      
-      // Show success notification
-      showNotification("Task created successfully", "success");
-      
-      // The createTask function already refreshes the UI
-      // No need to call refreshTasks() here
-      
-      return savedTask;
-    } catch (error) {
-      console.error("Error creating task:", error);
-      showNotification("Failed to create task. Please try again.", "error");
-      throw error; // Re-throw to allow callers to handle the error if needed
-    }
-  };
-
-  // Function to handle toggling subtask completion
-  const handleToggleSubtaskCompletion = (taskId: string, subtaskId: string) => {
-    if (isLoading) return;
-    
-    // Find the task in all days
-    let taskToUpdate: Task | null = null;
-    
-    for (const day of days) {
-      const task = day.tasks.find((t) => t.id === taskId);
-      if (task) {
-        taskToUpdate = { ...task };
         break;
       }
     }
-    
-    if (!taskToUpdate || !taskToUpdate.subtasks) return;
-    
-    // Find and update the subtask
-    const updatedSubtasks = taskToUpdate.subtasks.map((subtask) => {
-      if (subtask.id === subtaskId) {
-        return { ...subtask, completed: !subtask.completed };
-      }
-      return subtask;
-    });
-    
-    taskToUpdate.subtasks = updatedSubtasks;
-    
-    // Update localStorage
-    const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
-    const storedTasks = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    
-    // Find and update the task in storage
-    const updatedStoredTasks = storedTasks.map((t: Task) => {
-      if (t.id === taskId) {
-        return { ...t, subtasks: updatedSubtasks };
-      }
-      return t;
-    });
-    
-    // Save to localStorage
-    localStorage.setItem(storageKey, JSON.stringify(updatedStoredTasks));
-    
-    // Update the task in the database if applicable
-    if (isSupabaseConfigured() && taskToUpdate.id) {
-      updateTask(taskToUpdate).catch(error => {
-        console.error('Error updating task in database:', error);
-      });
-    }
-    
-    // Refresh tasks to update the UI
-    refreshTasks();
   };
 
-  // Function to handle key presses in the new task input
-  const handleInputKeyDown = (dayIndex: number, columnType: "personal" | "work", e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAddNewTask(dayIndex, columnType);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      
-      // Close only the specific column's input
-      if (columnType === "personal") {
-        const newFlags = [...personalNewTaskOpen];
-        newFlags[dayIndex] = false;
-        setPersonalNewTaskOpen(newFlags);
-      } else {
-        const newFlags = [...workNewTaskOpen];
-        newFlags[dayIndex] = false;
-        setWorkNewTaskOpen(newFlags);
+  // Toggle task completion
+  const handleToggleCompletion = async (taskId: string) => {
+    // Find the task in any day's tasks
+    for (const day of days) {
+      const task = day.tasks.find(t => t.id === taskId);
+      if (task) {
+        const updates: Partial<Task> = {
+          completed: !task.completed
+        };
+        
+        // Only update completion dates if the task is being marked as completed
+        if (!task.completed) {
+          updates.completionDate = format(new Date(), 'yyyy-MM-dd');
+          updates.completionDateMMMD = format(new Date(), 'MMM d');
+        } else {
+          updates.completionDate = undefined;
+          updates.completionDateMMMD = undefined;
+        }
+        
+        await updateTaskInHook(taskId, updates);
+        break;
       }
     }
-  }
-  
-  // Function to handle toggling the new task input for a specific column
-  const handleToggleNewTaskInput = (dayIndex: number, columnType: "personal" | "work") => {
-    // Don't allow adding tasks to past days
-    if (days[dayIndex]?.isPast) return;
-    
-    if (columnType === "personal") {
-      // Toggle the Personal column input state for this day only
+  };
+
+  // Toggle subtask completion
+  const handleToggleSubtaskCompletion = async (taskId: string, subtaskId: string) => {
+    // Find the task in any day's tasks
+    for (const day of days) {
+      const task = day.tasks.find(t => t.id === taskId);
+      if (task && task.subtasks) {
+        const updatedSubtasks = task.subtasks.map((st: Subtask) => 
+          st.id === subtaskId ? { ...st, completed: !st.completed } : st
+        );
+        
+        const allSubtasksCompleted = updatedSubtasks.every((st: Subtask) => st.completed);
+        const updates: Partial<Task> = {
+          subtasks: updatedSubtasks,
+          completed: allSubtasksCompleted
+        };
+        
+        // Only update completion dates if all subtasks are completed
+        if (allSubtasksCompleted) {
+          updates.completionDate = format(new Date(), 'yyyy-MM-dd');
+          updates.completionDateMMMD = format(new Date(), 'MMM d');
+        } else if (task.completed) {
+          // If task was completed but now has incomplete subtasks, clear completion
+          updates.completed = false;
+          updates.completionDate = undefined;
+          updates.completionDateMMMD = undefined;
+        }
+        
+        await updateTaskInHook(taskId, updates);
+        break;
+      }
+    }
+  };
+
+  // Handle new task text changes
+  const handlePersonalNewTaskTextChange = (dayIndex: number, text: string) => {
+    const newTexts = [...personalNewTaskTexts];
+    newTexts[dayIndex] = text;
+    setPersonalNewTaskTexts(newTexts);
+  };
+
+  const handleWorkNewTaskTextChange = (dayIndex: number, text: string) => {
+    const newTexts = [...workNewTaskTexts];
+    newTexts[dayIndex] = text;
+    setWorkNewTaskTexts(newTexts);
+  };
+
+  // Toggle new task input
+  const handleToggleNewTaskInput = (dayIndex: number, type: 'personal' | 'work') => {
+    if (type === 'personal') {
       const newFlags = [...personalNewTaskOpen];
       newFlags[dayIndex] = !newFlags[dayIndex];
       setPersonalNewTaskOpen(newFlags);
-      
-      // Close work input if it's open for the same day
-      if (workNewTaskOpen[dayIndex]) {
-        const workUpdated = [...workNewTaskOpen];
-        workUpdated[dayIndex] = false;
-        setWorkNewTaskOpen(workUpdated);
+      if (newFlags[dayIndex]) {
+        // Close work input if opening personal
+        const workFlags = [...workNewTaskOpen];
+        workFlags[dayIndex] = false;
+        setWorkNewTaskOpen(workFlags);
       }
     } else {
-      // Toggle the Work column input state for this day only
       const newFlags = [...workNewTaskOpen];
       newFlags[dayIndex] = !newFlags[dayIndex];
       setWorkNewTaskOpen(newFlags);
-      
-      // Close personal input if it's open for the same day
-      if (personalNewTaskOpen[dayIndex]) {
-        const personalUpdated = [...personalNewTaskOpen];
-        personalUpdated[dayIndex] = false;
-        setPersonalNewTaskOpen(personalUpdated);
+      if (newFlags[dayIndex]) {
+        // Close personal input if opening work
+        const personalFlags = [...personalNewTaskOpen];
+        personalFlags[dayIndex] = false;
+        setPersonalNewTaskOpen(personalFlags);
       }
     }
-  }
-  
-  // Function to handle changing the new task text
-  const handlePersonalNewTaskTextChange = (dayIndex: number, text: string) => {
-    const updatedTexts = [...personalNewTaskTexts]
-    updatedTexts[dayIndex] = text
-    setPersonalNewTaskTexts(updatedTexts)
-  }
-  
-  const handleWorkNewTaskTextChange = (dayIndex: number, text: string) => {
-    const updatedTexts = [...workNewTaskTexts]
-    updatedTexts[dayIndex] = text
-    setWorkNewTaskTexts(updatedTexts)
-  }
-  
-  // Function to handle scrolling through days
-  const scrollDays = (direction: "left" | "right") => {
-    setCurrentDayIndex((prevIndex) => {
-      const newIndex = direction === "left" ? Math.max(0, prevIndex - 1) : Math.min(days.length - 1, prevIndex + 1)
-      return newIndex
-    })
-  }
-  
+  };
+
+  // Add new task
+  const handleAddNewTask = async (dayIndex: number, columnType: 'personal' | 'work') => {
+    const text = columnType === 'personal' 
+      ? personalNewTaskTexts[dayIndex] 
+      : workNewTaskTexts[dayIndex];
+    
+    if (!text?.trim() || dayIndex >= days.length) return;
+    
+    try {
+      await createTaskInHook(text.trim(), dayIndex, columnType);
+      
+      // Reset input
+      if (columnType === 'personal') {
+        const newTexts = [...personalNewTaskTexts];
+        newTexts[dayIndex] = '';
+        setPersonalNewTaskTexts(newTexts);
+        setPersonalNewTaskOpen(prev => {
+          const newFlags = [...prev];
+          newFlags[dayIndex] = false;
+          return newFlags;
+        });
+      } else {
+        const newTexts = [...workNewTaskTexts];
+        newTexts[dayIndex] = '';
+        setWorkNewTaskTexts(newTexts);
+        setWorkNewTaskOpen(prev => {
+          const newFlags = [...prev];
+          newFlags[dayIndex] = false;
+          return newFlags;
+        });
+      }
+    } catch (err) {
+      console.error('Error creating task:', err);
+    }
+  };
+
+  // Handle task category change
+  const handleTaskCategoryChange = async (task: Task) => {
+    await updateTaskInHook(task.id, {
+      category: task.category === 'personal' ? 'work' : 'personal'
+    });
+  };
+
+  // Handle input key down
+  const handleInputKeyDown = (dayIndex: number, columnType: 'personal' | 'work', e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddNewTask(dayIndex, columnType);
+    } else if (e.key === 'Escape') {
+      handleToggleNewTaskInput(dayIndex, columnType);
+    }
+  };
+
+  // Get visible days (default to days from hook)
+  const visibleDays = days;
+
+  // Wrapper function to update a task
+  const updateTask = async (task: Task) => {
+    try {
+      // Create a copy of the task without the id to avoid TypeScript errors
+      const { id, ...updates } = task;
+      
+      // Ensure required fields are present with defaults if needed
+      const validUpdates: Partial<Task> = {
+        ...updates,
+        // Ensure required date fields are present
+        startDate: task.startDate || format(new Date(), 'yyyy-MM-dd'),
+        dueDate: task.dueDate || format(new Date(), 'yyyy-MM-dd'),
+        // Handle completion dates
+        completionDate: task.completionDate || undefined,
+        completionDateMMMD: task.completionDate ? format(new Date(task.completionDate), 'MMM d') : undefined,
+      };
+      
+      await updateTaskInHook(id, validUpdates);
+    } catch (error) {
+      console.error('Error updating task:', error);
+      // Consider showing an error notification to the user here
+    }
+  };
+
+
+
   return (
     <PageLayout 
       collapseAllColumnsOfType={collapseAllColumnsOfType}
       expandAllColumnsOfType={expandAllColumnsOfType}
     >
-      {/* Mobile Header - Only for mobile view */}
-      <div className="lg:hidden">
-        <MobileHeader 
-          onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          isMenuOpen={isMobileMenuOpen}
-        />
-      </div>
-      
-      <div className="flex-1 overflow-auto bg-slate-900">
-          {notification && notification.visible && (
-            <TaskNotification 
-              message={notification.message}
-              type={notification.type}
-              onClose={hideNotification}
+      <DndProvider backend={HTML5Backend} options={{ enableMouseEvents: true, enableTouchEvents: true }}>
+        <div className="flex overflow-x-auto overflow-y-hidden h-[calc(100vh-120px)] w-full px-2 sm:px-4">
+          {visibleDays.map((day, dayIndex) => (
+            <DayColumn
+              key={format(day.date, "yyyy-MM-dd")}
+              day={day}
+              dayIndex={dayIndex}
+              onTaskClick={handleTaskClick}
+              onToggleCompletion={handleToggleCompletion}
+              onToggleSubtaskCompletion={handleToggleSubtaskCompletion}
+              moveTask={handleMove}
+              updateTask={updateTask}
+              personalIsNewTaskOpen={personalNewTaskOpen[dayIndex] || false}
+              workIsNewTaskOpen={workNewTaskOpen[dayIndex] || false}
+              personalNewTaskText={personalNewTaskTexts[dayIndex] || ''}
+              workNewTaskText={workNewTaskTexts[dayIndex] || ''}
+              onPersonalNewTaskTextChange={(text) => handlePersonalNewTaskTextChange(dayIndex, text)}
+              onWorkNewTaskTextChange={(text) => handleWorkNewTaskTextChange(dayIndex, text)}
+              onTogglePersonalNewTaskInput={() => handleToggleNewTaskInput(dayIndex, 'personal')}
+              onToggleWorkNewTaskInput={() => handleToggleNewTaskInput(dayIndex, 'work')}
+              onAddNewTask={handleAddNewTask}
+              isLoading={isLoading}
+              onTaskCategoryChange={handleTaskCategoryChange}
+              onKeyDown={handleInputKeyDown}
+              isPersonalCollapsed={collapsedColumns.personal[dayIndex] || false}
+              isWorkCollapsed={collapsedColumns.work[dayIndex] || false}
+              onTogglePersonalCollapse={() => toggleColumnCollapse("personal", dayIndex)}
+              onToggleWorkCollapse={() => toggleColumnCollapse("work", dayIndex)}
             />
-          )}
-          
-          {/* Header */}
-          <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 flex items-center justify-between sticky top-0 z-20">
-            <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" onClick={handleRefresh}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-            </div>
-            
-            <h1 className="text-lg font-semibold">My Tasks</h1>
-            
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => scrollDays("left")}
-                disabled={currentDayIndex === 0}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm text-slate-400">
-                {visibleDays.length > 0 &&
-                  `${format(visibleDays[currentDayIndex]?.date || new Date(), "MMMM d")}`}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => scrollDays("right")}
-                disabled={currentDayIndex >= days.length - 1}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          
-          {/* Content */}
-          {localLoading && days.length === 0 ? (
-            <div className="flex justify-center items-center h-[calc(100vh-170px)]">
-              <p className="text-slate-400 text-lg">Loading...</p>
-            </div>
-          ) : days.length === 0 ? (
-            <div className="flex flex-col justify-center items-center h-[calc(100vh-170px)]">
-              <AlertCircle className="h-12 w-12 text-slate-400 mb-4" />
-              <h3 className="text-lg font-medium">No tasks found</h3>
-              <p className="text-slate-400 mt-1 mb-4">Create a task to get started</p>
-              <Button onClick={() => {
-                const todayIndex = days.findIndex(day => isToday(day.date));
-                const targetIndex = todayIndex >= 0 ? todayIndex : 0;
-                handleToggleNewTaskInput(targetIndex, "personal");
-              }}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Task
-              </Button>
-            </div>
-          ) : (
-            <DndProvider backend={HTML5Backend} options={{ enableMouseEvents: true, enableTouchEvents: true }}>
-              <div className="flex overflow-x-auto overflow-y-hidden h-[calc(100vh-120px)] w-full px-2 sm:px-4">
-                {visibleDays.map((day, dayIndex) => (
-                  <DayColumn
-                    key={format(day.date, "yyyy-MM-dd")}
-                    day={day}
-                    dayIndex={dayIndex}
-                    onTaskClick={handleTaskClick}
-                    onToggleCompletion={handleToggleCompletion}
-                    onToggleSubtaskCompletion={handleToggleSubtaskCompletion}
-                    moveTask={handleMove}
-                    updateTask={updateTask}
-                    personalIsNewTaskOpen={personalNewTaskOpen[dayIndex]}
-                    workIsNewTaskOpen={workNewTaskOpen[dayIndex]}
-                    personalNewTaskText={personalNewTaskTexts[dayIndex]}
-                    workNewTaskText={workNewTaskTexts[dayIndex]}
-                    onPersonalNewTaskTextChange={(text) => handlePersonalNewTaskTextChange(dayIndex, text)}
-                    onWorkNewTaskTextChange={(text) => handleWorkNewTaskTextChange(dayIndex, text)}
-                    onTogglePersonalNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "personal")}
-                    onToggleWorkNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "work")}
-                    onAddNewTask={handleAddNewTask}
-                    isLoading={isLoading || localLoading}
-                    onTaskCategoryChange={handleTaskCategoryChange}
-                    onKeyDown={handleInputKeyDown}
-                    isPersonalCollapsed={personalCollapsed[dayIndex]}
-                    isWorkCollapsed={workCollapsed[dayIndex]}
-                    onTogglePersonalCollapse={() => toggleColumnCollapse(dayIndex, "personal")}
-                    onToggleWorkCollapse={() => toggleColumnCollapse(dayIndex, "work")}
-                  />
-                ))}
-              </div>
-            </DndProvider>
-          )}
-          
-          {/* Task Modal */}
-          {isTaskModalOpen && selectedTask && (
-            <TaskModal
-              task={selectedTask}
-              isOpen={isTaskModalOpen}
-              onClose={() => setIsTaskModalOpen(false)}
-              onSave={async (updatedTask) => {
-                await updateTask(updatedTask.id, updatedTask);
-                setIsTaskModalOpen(false);
-                setSelectedTask(null);
-              }}
-              onDelete={async (taskId) => {
-                await deleteTask(taskId);
-                setIsTaskModalOpen(false);
-                setSelectedTask(null);
-              }}
-            />
-          )}
+          ))}
         </div>
-      </PageLayout>
-  )
+      </DndProvider>
+      
+      {/* Task Modal */}
+      {isTaskModalOpen && selectedTask && (
+        <TaskModal
+          task={selectedTask}
+          isOpen={isTaskModalOpen}
+          onClose={() => setIsTaskModalOpen(false)}
+          onSave={async (updatedTask) => {
+            await updateTask(updatedTask);
+            setIsTaskModalOpen(false);
+            setSelectedTask(null);
+          }}
+          onDelete={async (taskId) => {
+            await deleteTask(taskId);
+            setIsTaskModalOpen(false);
+            setSelectedTask(null);
+          }}
+        />
+      )}
+    </PageLayout>
+  );
 }
