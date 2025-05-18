@@ -1180,15 +1180,12 @@ export async function saveStickyNote(note: StickyNoteInput | Partial<StickyNote>
 
   const now = new Date().toISOString();
   const isNewNote = !note?.id;
-
-  console.log('[saveStickyNote] Starting with note ID:', note?.id || 'new');
-  console.log('[saveStickyNote] Note type:', isNewNote ? 'New note' : 'Existing note');
   
   try {
     // Prepare note data with required fields
     const noteData: Partial<StickyNote> = {
       ...note,
-      user_id: userId, // Use the explicitly provided userId
+      user_id: userId,
       updatedAt: now,
       updated_at: now,
     };
@@ -1215,7 +1212,7 @@ export async function saveStickyNote(note: StickyNoteInput | Partial<StickyNote>
     // Ensure required fields have defaults with proper null checks
     const safeNoteData: StickyNote = {
       id: noteData.id || uuidv4(),
-      user_id: userId, // Use the explicitly provided userId
+      user_id: userId,
       content: noteData?.content || '',
       color: noteData?.color || '#fff9c4',
       position_x: typeof noteData?.position_x === 'number' ? noteData.position_x : 0,
@@ -1553,21 +1550,33 @@ function transformDefaultCategories(userId: string = 'default'): StickyNoteCateg
 
 // Create or update a category
 export async function saveStickyNoteCategory(category: Partial<StickyNoteCategory>): Promise<StickyNoteCategory | null> {
-  const isUpdate = !!category.id
-  const now = new Date().toISOString()
+  const isUpdate = !!category.id;
+  const now = new Date().toISOString();
+  
+  // Ensure we have a valid user ID
+  if (!category.user_id) {
+    const currentUser = await getCurrentUser();
+    if (currentUser?.id) {
+      category.user_id = currentUser.id;
+    } else {
+      console.error('User ID is required to save a category');
+      return null;
+    }
+  }
   
   const categoryData = {
     ...category,
     updated_at: now,
-    ...(!isUpdate && { created_at: now })
-  }
+    ...(!isUpdate && { 
+      id: uuidv4(),
+      created_at: now 
+    })
+  };
 
+  // If Supabase is not configured, use local storage
   if (!isSupabaseConfigured()) {
-    return saveStickyNoteCategoryToLocalStorage(categoryData)
+    return saveStickyNoteCategoryToLocalStorage(categoryData);
   }
-
-  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
-  console.log('User ID:', userId);
   
   try {
     const supabase = getSupabaseClient();
@@ -1585,19 +1594,22 @@ export async function saveStickyNoteCategory(category: Partial<StickyNoteCategor
       : await supabase
           .from('sticky_note_categories')
           .insert([categoryData])
-          .select()
+          .select();
 
     if (error) throw error;
     
     const savedCategory = data?.[0];
     if (savedCategory) {
+      // Update local storage as cache
       saveStickyNoteCategoryToLocalStorage(savedCategory, categoryData.user_id);
       return savedCategory;
     }
-    return null
+    
+    return null;
   } catch (error) {
-    console.error('Error saving sticky note category:', error)
-    return saveStickyNoteCategoryToLocalStorage(categoryData)
+    console.error('Error saving sticky note category:', error);
+    // Fall back to local storage on error
+    return saveStickyNoteCategoryToLocalStorage(categoryData);
   }
 }
 

@@ -129,7 +129,7 @@ export function SimplifiedStickyNote({ note, onDelete, onUpdate, onCategoryChang
         {note.category && note.category !== "All" && (
           <div className="flex items-center bg-white/20 rounded px-1.5 py-0.5">
             <Tag className="h-3 w-3 mr-1" />
-            <span>{note.category}</span>
+            <span>{typeof note.category === 'string' ? note.category : 'Uncategorized'}</span>
           </div>
         )}
       </div>

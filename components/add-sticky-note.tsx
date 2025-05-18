@@ -62,60 +62,90 @@ export function AddStickyNote({
     return categoryList.find(cat => cat.id === id);
   };
 
-  // Load categories when the modal opens or when the default category changes
+  // Update local categories and handle default category selection
   useEffect(() => {
-    const loadCategories = async () => {
-      if (!open) return;
-      
-      // Reset form when opening
-      setContent('');
-      setSelectedColor(COLORS[2]);
-      setIsLoading(true);
-      
-      try {
-        let categoriesToUse: StickyNoteCategory[] = [];
+    console.log('Categories prop changed:', { propCategories, defaultCategoryId });
+    
+    const updateCategories = async () => {
+      // If we have categories from props, use them
+      if (propCategories && propCategories.length > 0) {
+        console.log('Using prop categories:', propCategories);
+        setCategories(propCategories);
         
-        // Use provided categories if available, otherwise fetch them
-        if (propCategories && propCategories.length > 0) {
-          categoriesToUse = [...propCategories];
-          setCategories(categoriesToUse);
-        } else if (isAuthenticated && userId) {
-          categoriesToUse = await getStickyNoteCategories(userId);
-          setCategories(categoriesToUse);
-        } else {
-          // Fallback to default categories if not authenticated
-          const defaultCategory = {
+        // Find the category to select
+        let categoryToSelect = propCategories[0];
+        
+        if (defaultCategoryId) {
+          console.log('Looking for default category ID:', defaultCategoryId);
+          const foundCategory = findCategoryById(propCategories, defaultCategoryId);
+          if (foundCategory) {
+            console.log('Found default category:', foundCategory);
+            categoryToSelect = foundCategory;
+          } else {
+            console.warn('Default category not found in categories:', defaultCategoryId);
+          }
+        }
+        
+        console.log('Setting selected category:', categoryToSelect);
+        setSelectedCategory(categoryToSelect);
+        setIsLoading(false);
+        return;
+      }
+      
+      // If no categories from props, try to fetch them
+      if (open && isAuthenticated && userId) {
+        console.log('Fetching categories for user:', userId);
+        setIsLoading(true);
+        try {
+          const fetchedCategories = await getStickyNoteCategories(userId);
+          console.log('Fetched categories:', fetchedCategories);
+          
+          if (fetchedCategories.length > 0) {
+            let categoryToSelect = fetchedCategories[0];
+            
+            if (defaultCategoryId) {
+              const foundCategory = findCategoryById(fetchedCategories, defaultCategoryId);
+              if (foundCategory) {
+                console.log('Using default category from ID:', foundCategory);
+                categoryToSelect = foundCategory;
+              }
+            }
+            
+            console.log('Setting categories and selected category:', {
+              categories: fetchedCategories,
+              selected: categoryToSelect
+            });
+            
+            setCategories(fetchedCategories);
+            setSelectedCategory(categoryToSelect);
+          } else {
+            console.log('No categories found, initializing defaults');
+            const defaultCategories = await initializeDefaultCategories(userId);
+            console.log('Initialized default categories:', defaultCategories);
+            setCategories(defaultCategories);
+            setSelectedCategory(defaultCategories[0]);
+          }
+        } catch (error) {
+          console.error('Error fetching categories:', error);
+          // Fallback to a default category
+          const fallbackCategory: StickyNoteCategory = {
             id: 'default',
-            user_id: 'local-user',
+            user_id: userId || 'local-user',
             name: 'Uncategorized',
             color: '#6b7280',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           };
-          categoriesToUse = [defaultCategory];
-          setCategories(categoriesToUse);
+          console.log('Using fallback category:', fallbackCategory);
+          setCategories([fallbackCategory]);
+          setSelectedCategory(fallbackCategory);
+        } finally {
+          setIsLoading(false);
         }
-        
-        // Select the default category if provided, otherwise select the first category
-        if (categoriesToUse.length > 0) {
-          let categoryToSelect = categoriesToUse[0];
-          
-          if (defaultCategoryId) {
-            const foundCategory = findCategoryById(categoriesToUse, defaultCategoryId);
-            if (foundCategory) {
-              categoryToSelect = foundCategory;
-            }
-          }
-          
-          console.log('Setting selected category:', categoryToSelect);
-          setSelectedCategory(categoryToSelect);
-        } else {
-          setSelectedCategory(null);
-        }
-      } catch (error) {
-        console.error('Error loading categories:', error);
-        // Fallback to a default category
-        const fallbackCategory: StickyNoteCategory = {
+      } else if (open) {
+        // Not authenticated, use local category
+        console.log('User not authenticated, using local category');
+        const localCategory: StickyNoteCategory = {
           id: 'default',
           user_id: 'local-user',
           name: 'Uncategorized',
@@ -123,17 +153,29 @@ export function AddStickyNote({
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
-        setCategories([fallbackCategory]);
-        setSelectedCategory(fallbackCategory);
-      } finally {
+        console.log('Using local category:', localCategory);
+        setCategories([localCategory]);
+        setSelectedCategory(localCategory);
         setIsLoading(false);
       }
     };
     
-    loadCategories();
-    // Remove propCategories from the dependency array to prevent infinite loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultCategoryId, isAuthenticated, userId]);
+    updateCategories();
+  }, [propCategories, defaultCategoryId, open, isAuthenticated, userId]);
+  
+  // Log when selected category changes
+  useEffect(() => {
+    console.log('Selected category changed:', selectedCategory);
+  }, [selectedCategory]);
+  
+  // Reset form when opening/closing the modal
+  useEffect(() => {
+    if (open) {
+      console.log('Modal opened, resetting form');
+      setContent('');
+      setSelectedColor(COLORS[2]);
+    }
+  }, [open]);
 
   const handleAddNote = () => {
     if (!content.trim() || !selectedCategory) return;
@@ -216,12 +258,11 @@ export function AddStickyNote({
                         <span 
                           className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium min-w-[24px] text-center"
                           style={{ 
-                            backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
                             color: 'white',
-                            textShadow: '0px 0px 2px rgba(0,0,0,0.3)'
                           }}
                         >
-                          {noteCounts && noteCounts[cat.id] !== undefined ? noteCounts[cat.id] : 0}
+                          {noteCounts[cat.id] ?? 0}
                         </span>
                       </div>
                     </DropdownMenuItem>
