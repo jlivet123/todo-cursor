@@ -7,6 +7,7 @@ import {
   Home,
   Calendar, 
   StickyNote, 
+  Brain,
   Sparkles, 
   Target,
   ChevronLeft,
@@ -131,6 +132,22 @@ export function NavigationSidebar({
             <Link href="/sticky-notes">
               <StickyNote className={cn(isCollapsed ? "" : "mr-2", "h-4 w-4")} />
               {!isCollapsed && "Sticky Notes"}
+            </Link>
+          </Button>
+
+         {/* Alter egos */}
+         <Button 
+            variant="ghost" 
+            asChild
+            className={cn(
+              "w-full", 
+              isCollapsed ? "justify-center px-0" : "justify-start",
+              pathname === "/alter-egos" ? "bg-slate-700 text-white" : "text-slate-200 hover:bg-slate-700/50"
+            )}
+          >
+            <Link href="/alter-egos">
+              <Brain className={cn(isCollapsed ? "" : "mr-2", "h-4 w-4")} />
+              {!isCollapsed && "Alter egos"}
             </Link>
           </Button>
         </div>
