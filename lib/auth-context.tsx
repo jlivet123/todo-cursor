@@ -192,3 +192,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   return useContext(AuthContext)
 }
+
+export function useAuthStatus() {
+  const { user } = useAuth();
+  
+  const isAuthenticated = !!user?.id;
+  
+  return {
+    isAuthenticated,
+    userId: user?.id || null,
+    user
+  };
+}

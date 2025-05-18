@@ -1,60 +1,59 @@
-Frontend:
-Next.js - React framework with server-side rendering capabilities
-React - JavaScript library for building user interfaces
-TypeScript - Typed superset of JavaScript
-Tailwind CSS - Utility-first CSS framework for styling
-Lucide React - Icon library
-date-fns - Modern JavaScript date utility library
-React DnD (React Drag and Drop) - For drag-and-drop functionality
+# .cursorrules — Todo-Cursor Repository
 
-Backend/Database:
-Supabase - Open source Firebase alternative providing:
+## Key Principles
+- Keep files small and focused for better AI interaction and maintainability.
+- Always add descriptive comments to explain intent and business rules.
+- Prompt for missing files before generating code if context is insufficient.
+- Implement meaningful logging for debugging and traceability.
+- Use modular, reusable components to avoid duplication.
+- Use descriptive variable names with auxiliary verbs (e.g., isLoading, hasError).
+- Use lowercase with dashes for directories (e.g., components/task-item).
 
-Authentication
-PostgreSQL database
+## Code Style & Patterns (TypeScript / React / Next.js)
+- Use TypeScript for all code. Prefer interfaces over types.
+- Avoid enums; use maps or union types for better flexibility.
+- Write pure functions using the `function` keyword.
+- Favor named exports for components and utilities.
+- Follow RORO (Receive Object, Return Object) pattern for functions with multiple parameters.
+- Use concise one-liners for simple conditionals (e.g., if (!task) return null).
+- Use early returns to handle errors and edge cases up front. Place the happy path last.
+- Avoid unnecessary else statements after return.
+- Organize files: Exported Component → Subcomponents → Helpers → Types → Static Content.
 
-Real-time subscriptions
-State Management:
-React's built-in hooks (useState, useEffect, useCallback)
-Custom hooks for task and authentication management
-Development Tools:
-npm/Node.js for package management
-Next.js development server
+## React / Next.js 14 (App Router)
+- Use functional components with TypeScript interfaces.
+- Prefer declarative JSX patterns.
+- Minimize use of 'use client': 
+  - Use server components and SSR whenever possible.
+  - Use 'use client' only for browser-specific APIs and interactive components.
+- Organize static content and constants outside render functions, at the end of the file.
+- Implement responsive design with TailwindCSS, following a mobile-first approach.
+- Use lazy loading and Suspense for non-critical client components.
+- Optimize images with next/image (WebP, lazy loading, responsive sizing).
 
-The application is structured as a modern single-page application with server components, following the file-based routing pattern of Next.js. It has a fallback to localStorage when Supabase is not configured, allowing for offline or demo usage.
+## Error Handling & State Management
+- Handle Supabase errors gracefully with user-friendly messages.
+- Use guard clauses to handle invalid states early in functions.
+- Prefer error boundaries (`error.tsx`, `global-error.tsx`) for unexpected errors.
+- Use early returns instead of nested conditionals.
+- Model expected errors as return values instead of using try/catch blocks for normal flows.
 
-Business Functionality
+## Business Logic Guidelines
+- Task Management:
+  - Active tasks appear under their start date; completed tasks appear under their completion date.
+  - Incomplete tasks never show on past days, they always rollover to the current day.  Completed tasks always show on the date completed.  Future tasks show based on the start date of the task.  Due date determines if they are overdue.
+  - Dragging tasks between columns updates the category.  The categories are work and personal and we have a column for each under each day.
+  - Dragging tasks across days updates the start date and category if applicable.  For example, you drag a task from work to personal then the category updates to personal.
+  - Subtasks act as checklists within tasks. Ensure subtask completion syncs with parent task.
+- Data Persistence:
+  - Use Supabase for data storage. Fallback to localStorage for offline/demo mode.
+- Decision Matrix:
+  - Support full CRUD with offline fallback.
+- Prepare for future enhancements: Dashboard, Sticky Notes, Daily Rituals.
 
-Summary
-THe app is a personal todo list tracker and management system.
-
-Task Display Summary
-The task manager displays tasks in a 2-column layout per day: Work and Personal. The app always opens with today as the default day, with the ability to scroll forward through future days.
-
-📆 Task Placement Logic
-Tasks are shown under their start date.
-
-Active (incomplete) tasks with a start date of today or earlier always appear under today.
-
-Completed tasks appear on the day they were completed, regardless of start date.
-
-Due date is not used for filtering or placement.
-
-🧩 Daily Task Grouping
-Each day's columns are grouped into:
-
-Overdue (shown only under today's date)
-
-To-Dos (incomplete, starting today)
-
-Completed (tasks finished on that day)
-
-↔️ Drag-and-Drop Behavior
-Dragging between columns (Work ↔ Personal) updates the task's category.
-
-Dragging to another day updates the task’s start date to the target day.
-
-Dragging to another day & column updates both the start date and category.
-
-📂 Column Management
-Each day's Work and Personal columns are collapsible, allowing for streamlined viewing.
+## AI Assistant Behavior
+- Always ask for missing files before proceeding with code generation.
+- Favor small, scoped code changes for accuracy.
+- Provide code with inline comments explaining logic.
+- Suggest logging points for new features.
+- Adhere to these rules consistently in all suggestions.

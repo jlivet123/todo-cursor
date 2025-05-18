@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   format,
   addMonths,
@@ -12,7 +12,7 @@ import {
   isSameDay,
   addDays,
 } from "date-fns"
-import { ChevronLeft, ChevronRight, ArrowUpFromLine, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface DatePickerModalProps {
@@ -26,7 +26,15 @@ interface DatePickerModalProps {
 
 export function DatePickerModal({ isOpen, onClose, onSelectDate, selectedDate, type, onDelete }: DatePickerModalProps) {
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date())
+  
+  // Update current month when selected date changes
+  useEffect(() => {
+    if (selectedDate) {
+      setCurrentMonth(selectedDate);
+    }
+  }, [selectedDate]);
 
+  // Early return if not open
   if (!isOpen) return null
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))
@@ -48,6 +56,7 @@ export function DatePickerModal({ isOpen, onClose, onSelectDate, selectedDate, t
 
   const handleDateClick = (date: Date) => {
     onSelectDate(date)
+    onClose()
   }
 
   const handleDelete = () => {
@@ -57,66 +66,48 @@ export function DatePickerModal({ isOpen, onClose, onSelectDate, selectedDate, t
     }
   }
 
+  // This event handler ensures the modal closes when clicking outside
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose()
+    }
+  }
+
+  // Handle escape key press
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    
+    if (isOpen) {
+      window.addEventListener('keydown', handleEscape);
+    }
+    
+    return () => {
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center date-picker-modal"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose()
-        }
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 date-picker-modal"
+      onClick={handleBackdropClick}
     >
       <div
-        className="mt-16 bg-slate-800 text-white rounded-lg shadow-xl w-80 overflow-hidden border border-slate-700"
+        className="bg-slate-800 text-white rounded-lg shadow-xl w-80 overflow-hidden border border-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
-        {type === "due" ? (
-          <div className="p-4">
-            <div className="text-slate-400 mb-2">Due date:</div>
-            <div className="flex justify-center mb-2">
-              <div className="bg-slate-700 rounded-md px-4 py-2">Set due date</div>
-            </div>
+        {/* Header */}
+        <div className="p-3 border-b border-slate-700">
+          <div className="text-slate-300 font-medium">
+            {type === "start" ? "Start date" : "Due date"}
           </div>
-        ) : (
-          <div className="p-4 border-b border-slate-700">
-            <div className="text-slate-300 mb-4">
-              This has rolled over 5 times. You'll feel better if you snooze or delete it.
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>Snooze one day</div>
-                <div className="text-slate-400">D</div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>Move to next week</div>
-                <div className="flex items-center gap-2">
-                  <ArrowUpFromLine className="h-4 w-4" />
-                  <span className="text-slate-400">Z</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>Move to backlog</div>
-                <div className="text-slate-400">Z</div>
-              </div>
-              <div
-                className="flex items-center justify-between cursor-pointer hover:bg-slate-700 p-1 rounded"
-                onClick={handleDelete}
-              >
-                <div>Delete</div>
-                <div className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" />
-                  <span className="text-slate-400">Delete</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>Keep for today</div>
-              </div>
-            </div>
-            <div className="mt-4 text-slate-400">Start date:</div>
-          </div>
-        )}
+        </div>
 
-        <div className="p-4">
+        {/* Calendar */}
+        <div className="p-3">
           <div className="flex items-center justify-between mb-4">
             <button onClick={prevMonth} className="p-1 rounded-full hover:bg-slate-700">
               <ChevronLeft className="h-5 w-5" />
@@ -155,6 +146,28 @@ export function DatePickerModal({ isOpen, onClose, onSelectDate, selectedDate, t
                 </button>
               )
             })}
+          </div>
+          
+          {/* Footer */}
+          <div className="mt-4 flex justify-between">
+            {onDelete && (
+              <button 
+                onClick={handleDelete}
+                className="text-red-400 hover:text-red-300 flex items-center"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete
+              </button>
+            )}
+            <button
+              onClick={() => {
+                onSelectDate(null);
+                onClose();
+              }}
+              className="ml-auto text-slate-400 hover:text-slate-300"
+            >
+              Clear
+            </button>
           </div>
         </div>
       </div>
