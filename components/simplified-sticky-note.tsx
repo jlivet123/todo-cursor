@@ -1,12 +1,11 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState } from "react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { X, Edit, Check, Tag, GripVertical } from "lucide-react"
+import { X, Edit, Check, Tag } from "lucide-react"
 import type { StickyNote as StickyNoteType } from "@/lib/storage"
 import { cn } from "@/lib/utils"
-import { useDrag } from "react-dnd"
 
 interface StickyNoteProps {
   note: StickyNoteType
@@ -15,92 +14,43 @@ interface StickyNoteProps {
   onCategoryChange: (id: string, newCategory: string) => void
 }
 
-// Define the drag item type
-export const STICKY_NOTE_TYPE = "sticky-note"
-
-export function StickyNote({ note, onDelete, onUpdate, onCategoryChange }: StickyNoteProps) {
+export function SimplifiedStickyNote({ note, onDelete, onUpdate, onCategoryChange }: StickyNoteProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(note.content)
 
   const handleEdit = () => {
-    // Set the current content as the edited content
     setEditedContent(note.content)
     setIsEditing(true)
   }
 
   const handleSave = () => {
     if (editedContent.trim() !== "") {
-      // Call the parent's update function with the new content
-      // IMPORTANT: Pass the current category to ensure it's preserved
       onUpdate(note.id, editedContent, note.category)
       setIsEditing(false)
     }
   }
 
   const handleCancel = () => {
-    // Reset to original content and exit edit mode
     setEditedContent(note.content)
     setIsEditing(false)
   }
 
   const getRandomRotation = () => {
-    // Use the note id to generate a consistent rotation
     const seed = note.id.charCodeAt(0) + note.id.charCodeAt(note.id.length - 1)
-    return (seed % 6) - 3 // Between -3 and 3 degrees for subtler rotation
+    return (seed % 6) - 3
   }
-
-  // Set up drag functionality with fallback
-  let isDragging = false;
-  const dragRef = useRef<HTMLDivElement>(null);
-  
-  // Use a separate ref for the drag function
-  const drag = useRef<((element: HTMLElement | null) => void) | null>(null);
-  
-  try {
-    // Try to use drag and drop, but don't crash if context is missing
-    const [dragState, dragFn] = useDrag({
-      type: STICKY_NOTE_TYPE,
-      item: { id: note.id, category: note.category },
-      collect: (monitor) => ({
-        isDragging: !!monitor.isDragging(),
-      }),
-    });
-    
-    isDragging = dragState.isDragging;
-    drag.current = dragFn;
-  } catch (error) {
-    console.warn('Drag and drop not available:', error);
-    // Continue without drag and drop functionality
-  }
-  
-  // Apply the drag ref when the component mounts/updates
-  useEffect(() => {
-    if (drag.current && dragRef.current) {
-      drag.current(dragRef.current);
-    }
-  }, [dragRef]);
 
   return (
     <div
-      ref={dragRef}
       className={cn(
         "group relative flex flex-col p-3 rounded-md shadow-md min-h-[160px] transition-all duration-200 hover:shadow-lg",
-        "text-white",
-        isDragging && "opacity-50",
-        isEditing ? "cursor-default" : "cursor-move",
+        "text-white"
       )}
       style={{
         backgroundColor: note.color,
-        transform: isDragging ? "rotate(0deg)" : `rotate(${getRandomRotation()}deg)`,
+        transform: `rotate(${getRandomRotation()}deg)`,
       }}
     >
-      {/* Drag handle */}
-      {!isEditing && (
-        <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <GripVertical className="h-4 w-4 text-white/70" />
-        </div>
-      )}
-
       <div className="absolute top-1 right-1 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {!isEditing ? (
           <Button
@@ -176,7 +126,6 @@ export function StickyNote({ note, onDelete, onUpdate, onCategoryChange }: Stick
         <div className="opacity-70">
           {note.createdAt ? new Date(note.createdAt).toLocaleDateString() : 'No date'}
         </div>
-        {/* Category indicator */}
         {note.category && note.category !== "All" && (
           <div className="flex items-center bg-white/20 rounded px-1.5 py-0.5">
             <Tag className="h-3 w-3 mr-1" />

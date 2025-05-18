@@ -1,16 +1,27 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { X, Check, ChevronDown } from "lucide-react"
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { X, Check, ChevronDown, Loader2 } from "lucide-react"
+import { 
+  DropdownMenu, 
+  DropdownMenuTrigger, 
+  DropdownMenuContent, 
+  DropdownMenuItem 
+} from "@/components/ui/dropdown-menu"
+import { 
+  getStickyNoteCategories,
+  type StickyNoteCategory 
+} from "@/lib/storage"
+import { useAuthStatus } from "@/lib/auth-context"
 
 interface AddStickyNoteProps {
-  onAdd: (content: string, color: string, category: string) => void
-  categories: string[]
-  currentCategory: string
-  onCancel?: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAddNote: (content: string, color: string, category: string) => void;
+  categories?: StickyNoteCategory[]; // Make optional for backward compatibility
+  defaultCategoryId?: string; // ID of the category to select by default
 }
 
 // Darker color palette for better contrast with white text
@@ -22,29 +33,116 @@ const COLORS = [
   "#4a3670", // Dark Purple
 ]
 
-export function AddStickyNote({ onAdd, categories, currentCategory, onCancel }: AddStickyNoteProps) {
-  const [content, setContent] = useState("")
-  const [selectedColor, setSelectedColor] = useState(COLORS[2]) // Default to blue
-  const [category, setCategory] = useState(currentCategory)
+export function AddStickyNote({ 
+  open,
+  onOpenChange,
+  onAddNote,
+  defaultCategoryId
+}: AddStickyNoteProps) {
+  const [content, setContent] = useState("");
+  const [selectedColor, setSelectedColor] = useState(COLORS[2]); // Default to blue
+  const [categories, setCategories] = useState<StickyNoteCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<StickyNoteCategory | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { userId, isAuthenticated } = useAuthStatus();
+  
+  // Helper function to find a category by ID
+  const findCategoryById = (categoryList: StickyNoteCategory[], id: string): StickyNoteCategory | undefined => {
+    return categoryList.find(cat => cat.id === id);
+  };
 
-  const handleAdd = () => {
-    if (content.trim()) {
-      onAdd(content, selectedColor, category)
-      setContent("")
-    }
-  }
+  // Load categories when the modal opens or when the default category changes
+  useEffect(() => {
+    const loadCategories = async () => {
+      if (!open) return;
+      
+      // Reset form when opening
+      setContent('');
+      setSelectedColor(COLORS[2]);
+      setSelectedCategory(null);
+      setIsLoading(true);
+      
+      try {
+        let categoriesToUse: StickyNoteCategory[] = [];
+        
+        // Use provided categories if available, otherwise fetch them
+        if (categories && categories.length > 0) {
+          categoriesToUse = categories;
+        } else if (isAuthenticated && userId) {
+          categoriesToUse = await getStickyNoteCategories(userId);
+          // Only update categories if they weren't provided as props
+          if (!categories || categories.length === 0) {
+            setCategories(categoriesToUse);
+          }
+        } else {
+          // Fallback to default categories if not authenticated
+          const defaultCategory = {
+            id: 'default',
+            user_id: 'local-user',
+            name: 'Uncategorized',
+            color: '#6b7280',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          categoriesToUse = [defaultCategory];
+          setCategories([defaultCategory]);
+        }
+        
+        // Select the default category if provided, otherwise select the first category
+        if (categoriesToUse.length > 0) {
+          let categoryToSelect = categoriesToUse[0];
+          
+          if (defaultCategoryId) {
+            const foundCategory = findCategoryById(categoriesToUse, defaultCategoryId);
+            if (foundCategory) {
+              categoryToSelect = foundCategory;
+            }
+          }
+          
+          setSelectedCategory(categoryToSelect);
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error);
+        // Fallback to a default category
+        const fallbackCategory: StickyNoteCategory = {
+          id: 'default',
+          user_id: 'local-user',
+          name: 'Uncategorized',
+          color: '#6b7280',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        setCategories([fallbackCategory]);
+        setSelectedCategory(fallbackCategory);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadCategories();
+    // Remove categories from the dependency array to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultCategoryId, isAuthenticated, userId]);
+
+  const handleAddNote = () => {
+    if (!content.trim() || !selectedCategory) return;
+    onAddNote(content, selectedColor, selectedCategory.id);
+    setContent("");
+    onOpenChange(false);
+  };
 
   const handleCancel = () => {
-    if (onCancel) {
-      onCancel()
-    }
+    onOpenChange(false);
   }
 
+  if (!open) return null;
+
   return (
-    <div
-      className="flex flex-col p-3 rounded-md shadow-md min-h-[160px] border border-dashed text-white w-full"
-      style={{ backgroundColor: selectedColor }}
-    >
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div 
+        className="flex flex-col p-4 rounded-md shadow-lg min-h-[200px] w-full max-w-md text-white"
+        style={{ backgroundColor: selectedColor }}
+      >
       <Textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
@@ -70,30 +168,49 @@ export function AddStickyNote({ onAdd, categories, currentCategory, onCancel }: 
         </div>
 
         <div className="flex items-center space-x-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-white/80 hover:text-white hover:bg-white/10 flex items-center gap-1"
-              >
-                {category}
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {categories.map((cat) => (
-                <DropdownMenuItem
-                  key={cat}
-                  onClick={() => setCategory(cat)}
-                  className={cat === category ? "bg-muted" : ""}
-                >
-                  {cat}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
+          <div className="flex-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : selectedCategory ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: selectedCategory.color }}
+                      />
+                      <span className="truncate">{selectedCategory.name}</span>
+                      <ChevronDown className="ml-auto h-4 w-4" />
+                    </div>
+                  ) : (
+                    'Select category'
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="start">
+                {categories.length > 0 ? (
+                  categories.map((cat) => (
+                    <DropdownMenuItem
+                      key={cat.id}
+                      onSelect={() => setSelectedCategory(cat)}
+                      className="cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        <div 
+                          className="w-3 h-3 rounded-full flex-shrink-0" 
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        <span className="truncate">{cat.name}</span>
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem disabled>No categories found</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <Button
             variant="ghost"
             size="sm"
@@ -103,11 +220,12 @@ export function AddStickyNote({ onAdd, categories, currentCategory, onCancel }: 
             <X className="h-4 w-4 mr-1" />
             Cancel
           </Button>
-          <Button size="sm" onClick={handleAdd} className="bg-white/20 hover:bg-white/30 text-white">
+          <Button size="sm" onClick={handleAddNote} className="bg-white/20 hover:bg-white/30 text-white">
             <Check className="h-4 w-4 mr-1" />
             Add
           </Button>
         </div>
+      </div>
       </div>
     </div>
   )

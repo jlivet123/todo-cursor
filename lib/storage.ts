@@ -1,6 +1,15 @@
 import { getSupabaseClient, isSupabaseConfigured } from "./supabase"
 import { sampleTasks } from "./sample-data"
+import { v4 as uuidv4 } from 'uuid'
 import { format } from "date-fns"
+
+// Define default categories directly in storage.ts
+const DEFAULT_STICKY_NOTE_CATEGORIES = [
+  { name: 'All', color: '#fff9c4' },
+  { name: 'Work', color: '#bbdefb' },
+  { name: 'Personal', color: '#c8e6c9' },
+  { name: 'Ideas', color: '#ffccbc' }
+];
 
 export interface Subtask {
   id: string
@@ -31,12 +40,42 @@ export interface Task {
   dueDateObj?: Date | null
 }
 
-export interface StickyNote {
-  id: string
-  content: string
-  color: string
-  createdAt: string
-  category: string
+// Base interface for database operations
+export interface StickyNoteBase {
+  id: string;
+  user_id: string;
+  content: string;
+  color: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  z_index: number;
+  is_archived: boolean;
+  category_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+
+
+// Type for creating/updating notes
+export type StickyNoteInput = Omit<Partial<StickyNoteBase>, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string;               // Optional for creating new notes
+  category?: string;         // Optional category name 
+  userId?: string;           // Alternative to user_id
+  createdAt?: string;        // Alternative to created_at
+  updatedAt?: string;        // Alternative to updated_at
+};
+
+// Category definition
+export interface StickyNoteCategory {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DecisionMatrixEntry {
@@ -59,7 +98,15 @@ const TASKS_STORAGE_KEY = "taskmaster_tasks"
 const USER_STORAGE_KEY = "taskmaster_user"
 const INITIALIZED_KEY = "taskmaster_initialized"
 const DECISION_MATRIX_STORAGE_KEY = "taskmaster_decision_matrix"
-const STICKY_NOTES_STORAGE_KEY = "taskmaster_sticky_notes"
+
+// Generate a unique ID
+function generateId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
 
 // Helper function to check if we're in a browser environment
 const isBrowser = () => typeof window !== "undefined"
@@ -822,25 +869,785 @@ function saveDecisionMatrixToLocalStorage(entries: DecisionMatrixEntry[]): void 
   }
 }
 
-// Add these functions at the end of the file
-export function getStickyNotes(): StickyNote[] {
-  if (!isBrowser()) return []
+// Sticky Notes Interfaces
+// Define StickyNoteBase as the fundamental database schema
+export interface StickyNoteBase {
+  id: string;
+  user_id: string;
+  content: string;
+  color: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  z_index: number;
+  is_archived: boolean;
+  category?: string;        // Made optional to match application needs
+  category_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
+// StickyNote extends StickyNoteBase with application-specific properties
+export interface StickyNote extends StickyNoteBase {
+  // Optional additional fields for app use
+  category?: string;         // User-friendly category name
+  createdAt?: string;        // Alias for created_at
+  updatedAt?: string;        // Alias for updated_at
+  userId?: string;           // Alias for user_id
+}
+
+export interface StickyNoteCategory {
+  id: string
+  user_id: string
+  name: string
+  color: string
+  created_at: string
+  updated_at: string
+}
+
+// Sticky Notes Functions
+const STICKY_NOTES_KEY = 'taskmaster_sticky_notes';
+const STICKY_NOTE_CATEGORIES_KEY = 'taskmaster_sticky_note_categories';
+
+// Helper function to generate a unique ID for sticky notes
+function generateStickyNoteId(): string {
+  return 'note_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
+// Helper function to get current user ID
+export function getCurrentUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const user = JSON.parse(localStorage.getItem('sb-user') || 'null');
+  return user?.id || null;
+}
+
+// Save a sticky note to local storage
+export function saveStickyNoteToLocalStorage(note: Partial<StickyNote>): StickyNote | null {
+  if (!isBrowser()) return null;
+  
   try {
-    const notesJson = localStorage.getItem(STICKY_NOTES_STORAGE_KEY)
-    return notesJson ? JSON.parse(notesJson) : []
+    // Try to get user ID from the note first, then from auth
+    let userId = note.user_id || getCurrentUserId();
+    
+    // If still no user ID, use a default one for local storage
+    if (!userId) {
+      console.log('No authenticated user, using default user for local storage');
+      userId = 'local-user';
+    }
+
+    const now = new Date().toISOString();
+    const notes = getStickyNotesFromLocalStorage(userId);
+    
+    // Ensure all required fields have values
+    const noteToSave: StickyNote = {
+      id: note.id || generateStickyNoteId(),
+      user_id: userId,
+      content: note.content || '',
+      color: note.color || '#fff9c4',
+      position_x: note.position_x ?? 0,
+      position_y: note.position_y ?? 0,
+      width: note.width ?? 200,
+      height: note.height ?? 200,
+      z_index: note.z_index ?? 0,
+      is_archived: note.is_archived ?? false,
+      category: note.category || 'Uncategorized',
+      category_id: note.category_id ?? null,
+      created_at: note.created_at || now,
+      updated_at: now,
+      createdAt: note.createdAt || now,
+      updatedAt: now,
+    };
+    
+    const existingIndex = notes.findIndex(n => n.id === noteToSave.id);
+    
+    if (existingIndex >= 0) {
+      notes[existingIndex] = noteToSave;
+    } else {
+      notes.push(noteToSave);
+    }
+    
+    localStorage.setItem(`${STICKY_NOTES_KEY}_${userId}`, JSON.stringify(notes));
+    return noteToSave;
   } catch (error) {
-    console.error("Error getting sticky notes from localStorage:", error)
-    return []
+    console.error('Error saving sticky note to localStorage:', error);
+    return null;
   }
 }
 
-export function saveStickyNotes(notes: StickyNote[]): void {
-  if (!isBrowser()) return
+// Convert database note to app note format
+function mapDbNoteToAppNote(dbNote: any): StickyNote {
+  if (!dbNote) {
+    throw new Error('Cannot map null or undefined note');
+  }
+
+  const now = new Date().toISOString();
+  
+  // Create a StickyNote from database data with default values
+  const appNote: StickyNote = {
+    // Base properties from database
+    // Ensure ID is a valid UUID, generate one if missing
+    id: dbNote.id || uuidv4(),
+    user_id: dbNote.user_id || '',
+    content: dbNote.content || '',
+    color: dbNote.color || '#fff9c4',
+    position_x: Number(dbNote.position_x) || 0,
+    position_y: Number(dbNote.position_y) || 0,
+    width: Number(dbNote.width) || 200,
+    height: Number(dbNote.height) || 200,
+    z_index: Number(dbNote.z_index) || 0,
+    is_archived: Boolean(dbNote.is_archived),
+    category_id: dbNote.category_id || null,
+    created_at: dbNote.created_at || now,
+    updated_at: dbNote.updated_at || now,
+    
+    // Additional app properties
+    category: dbNote.category || 'Uncategorized',
+    createdAt: dbNote.created_at || now,
+    updatedAt: dbNote.updated_at || now,
+    userId: dbNote.user_id || ''
+  };
+
+  return appNote;
+}
+
+// Convert app note to database format
+function mapAppNoteToDbNote(note: StickyNoteInput): Partial<StickyNoteBase> {
+  if (!note) {
+    throw new Error('Cannot map null or undefined note');
+  }
+
+  const now = new Date().toISOString();
+  
+  // Create a database representation
+  const dbNote: Partial<StickyNoteBase> = {
+    // Ensure ID is a valid UUID (remove any 'note_' prefix if present)
+    id: (note.id && typeof note.id === 'string' && note.id.startsWith('note_')) 
+      ? note.id.replace(/^note_/, '') 
+      : note.id,
+    user_id: note.userId || (note as any).user_id, // Use type assertion for user_id
+    content: note.content || '',
+    color: note.color || '#fff9c4',
+    position_x: Number(note.position_x) || 0,
+    position_y: Number(note.position_y) || 0,
+    width: Number(note.width) || 200,
+    height: Number(note.height) || 200,
+    z_index: Number(note.z_index) || 0,
+    is_archived: Boolean(note.is_archived),
+    category_id: note.category_id || null,
+    // Use type assertion to access created_at if it exists
+    ...((note as any).created_at ? { created_at: (note as any).created_at } : {}),
+    ...(note.createdAt ? { created_at: note.createdAt } : {}),
+    // Always update the timestamp
+    updated_at: now
+  };
+
+  // Remove any undefined values
+  Object.keys(dbNote).forEach(key => dbNote[key as keyof typeof dbNote] === undefined && delete dbNote[key as keyof typeof dbNote]);
+  
+  return dbNote;
+}
+
+// Get all sticky notes for the current user
+export async function getStickyNotes(userId: string): Promise<StickyNote[]> {
+  if (!userId) {
+    console.error('User ID is required to get sticky notes');
+    return [];
+  }
+
+  // Ensure userId is a non-empty string
+  const validUserId = typeof userId === 'string' && userId.trim() !== '' ? userId : '';
+  
+  // If user ID is missing, return empty array
+  if (!validUserId) {
+    console.error('User ID is required to get sticky notes');
+    return [];
+  }
+
+  // If Supabase is not configured, use local storage
+  if (!isSupabaseConfigured()) {
+    return getStickyNotesFromLocalStorage(validUserId);
+  }
 
   try {
-    localStorage.setItem(STICKY_NOTES_STORAGE_KEY, JSON.stringify(notes))
+    // Try to get notes from Supabase
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.error('Failed to initialize Supabase client');
+      return getStickyNotesFromLocalStorage(validUserId);
+    }
+
+    const { data, error } = await supabase
+      .from('sticky_notes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching sticky notes from Supabase:', error);
+      return getStickyNotesFromLocalStorage(userId);
+    }
+
+    // Map database notes to app notes format
+    const notes = Array.isArray(data) 
+      ? data.map(note => mapDbNoteToAppNote(note)).filter(Boolean) 
+      : [];
+    
+    // Also save to local storage as fallback
+    if (isBrowser()) {
+      try {
+        localStorage.setItem(`${STICKY_NOTES_KEY}_${userId}`, JSON.stringify(notes));
+      } catch (e) {
+        console.error('Error saving notes to localStorage:', e);
+      }
+    }
+    
+    return notes;
   } catch (error) {
-    console.error("Error saving sticky notes to localStorage:", error)
+    console.error('Error getting sticky notes from Supabase:', error);
+    // Fall back to local storage if Supabase fails
+    return getStickyNotesFromLocalStorage(userId);
+  }
+}
+
+// Create or update a sticky note
+export async function saveStickyNote(note: StickyNoteInput | Partial<StickyNote>, userId?: string): Promise<StickyNote | null> {
+  // Always require an explicit userId parameter
+  if (!userId) {
+    console.error('User ID is required to save a sticky note');
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const isNewNote = !note?.id;
+
+  try {
+    // Prepare note data with required fields
+    const noteData: Partial<StickyNote> = {
+      ...note,
+      user_id: userId, // Use the explicitly provided userId
+      updatedAt: now,
+      updated_at: now,
+    };
+
+    // For new notes, generate ID and set creation timestamp
+    if (isNewNote) {
+      noteData.id = uuidv4();
+      noteData.createdAt = now;
+      noteData.created_at = now;
+    } else {
+      // For existing notes, ensure we have the required fields
+      const existingNote = (note && typeof note === 'object' && 'createdAt' in note && note.createdAt) || 
+                         (note && typeof note === 'object' && 'created_at' in note && note.created_at) || 
+                         now;
+      noteData.createdAt = existingNote || now;
+      noteData.created_at = existingNote || now;
+      
+      // Ensure the ID is a valid UUID (remove any prefix if present)
+      if (note.id && typeof note.id === 'string' && note.id.startsWith('note_')) {
+        noteData.id = note.id.replace(/^note_/, '');
+      }
+    }
+
+    // Ensure required fields have defaults with proper null checks
+    const safeNoteData: StickyNote = {
+      id: noteData.id || uuidv4(),
+      user_id: userId, // Use the explicitly provided userId
+      content: noteData?.content || '',
+      color: noteData?.color || '#fff9c4',
+      position_x: typeof noteData?.position_x === 'number' ? noteData.position_x : 0,
+      position_y: typeof noteData?.position_y === 'number' ? noteData.position_y : 0,
+      width: typeof noteData?.width === 'number' ? noteData.width : 200,
+      height: typeof noteData?.height === 'number' ? noteData.height : 200,
+      z_index: typeof noteData?.z_index === 'number' ? noteData.z_index : 0,
+      is_archived: Boolean(noteData?.is_archived),
+      category: noteData?.category || 'Uncategorized',
+      category_id: noteData?.category_id || null,
+      created_at: noteData?.created_at || now,
+      updated_at: now,
+      createdAt: noteData?.createdAt || now,
+      updatedAt: now,
+    };
+
+    // Convert app note to database format
+    const dbNote = mapAppNoteToDbNote(safeNoteData);
+
+    // Try to save note to Supabase if configured
+    if (isSupabaseConfigured() && isBrowser()) {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        throw new Error('Failed to initialize Supabase client');
+      }
+
+      const { data, error } = await supabase
+        .from('sticky_notes')
+        .upsert([dbNote])
+        .select();
+
+      if (error) throw error;
+      
+      if (data && Array.isArray(data) && data[0]) {
+        const savedNote = mapDbNoteToAppNote(data[0]);
+        // Update local storage with the saved note
+        saveStickyNoteToLocalStorage(savedNote);
+        return savedNote;
+      }
+    }
+    
+    // Fall back to local storage if Supabase is not configured or save failed
+    return saveStickyNoteToLocalStorage({
+      ...safeNoteData,
+      user_id: userId // Ensure user_id is set when falling back to local storage
+    });
+  } catch (error) {
+    console.error('Error saving sticky note:', error);
+    // Fall back to local storage if Supabase fails
+    return saveStickyNoteToLocalStorage({
+      ...note,
+      user_id: userId // Ensure user_id is set when falling back to local storage
+    });
+  }
+}
+
+// Delete a sticky note
+export async function deleteStickyNote(noteId: string, userId: string): Promise<boolean> {
+  if (!userId) {
+    console.error('User ID is required to delete sticky note');
+    return false;
+  }
+
+  // If Supabase is not configured, use local storage
+  if (!isSupabaseConfigured() || !isBrowser()) {
+    return deleteStickyNoteFromLocalStorage(noteId, userId);
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      throw new Error('Failed to initialize Supabase client');
+    }
+
+    const { error } = await supabase
+      .from('sticky_notes')
+      .delete()
+      .eq('id', noteId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    // Also delete from local storage
+    return deleteStickyNoteFromLocalStorage(noteId, userId);
+  } catch (error) {
+    console.error('Error deleting sticky note:', error);
+    // Fall back to local storage if Supabase fails
+    return deleteStickyNoteFromLocalStorage(noteId, userId);
+  }
+}
+
+// Initialize default categories for a new user
+async function initializeDefaultCategories(userId: string): Promise<StickyNoteCategory[]> {
+  if (!userId) {
+    console.error('User ID is required to initialize default categories');
+    return [];
+  }
+
+  const now = new Date().toISOString();
+  const defaultCategories = DEFAULT_STICKY_NOTE_CATEGORIES.map(cat => ({
+    id: uuidv4(),
+    user_id: userId,
+    name: cat.name,
+    color: cat.color,
+    created_at: now,
+    updated_at: now
+  }));
+
+  console.log(`Creating ${defaultCategories.length} default categories for user ${userId}`);
+
+  try {
+    if (!isSupabaseConfigured()) {
+      // Save to local storage if Supabase is not configured
+      const userStorageKey = `${STICKY_NOTE_CATEGORIES_KEY}_${userId}`;
+      localStorage.setItem(userStorageKey, JSON.stringify(defaultCategories));
+      console.log(`Saved ${defaultCategories.length} default categories to local storage`);
+      return defaultCategories;
+    }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      throw new Error('Failed to initialize Supabase client');
+    }
+
+    // Check existing categories first
+    const { data: existingCategories, error: checkError } = await supabase
+      .from('sticky_note_categories')
+      .select('name')
+      .eq('user_id', userId);
+      
+    if (checkError) {
+      console.error('Error checking existing categories:', checkError);
+      // Fall back to localStorage if database check fails
+      const userStorageKey = `${STICKY_NOTE_CATEGORIES_KEY}_${userId}`;
+      localStorage.setItem(userStorageKey, JSON.stringify(defaultCategories));
+      return defaultCategories;
+    }
+    
+    // Filter out categories that already exist
+    const existingNames = new Set(existingCategories.map(cat => cat.name));
+    const categoriesToInsert = defaultCategories.filter(cat => !existingNames.has(cat.name));
+    
+    if (categoriesToInsert.length === 0) {
+      console.log('All default categories already exist for this user');
+      // Return the existing categories
+      const { data: allCategories } = await supabase
+        .from('sticky_note_categories')
+        .select('*')
+        .eq('user_id', userId);
+      return allCategories || [];
+    }
+    
+    // Insert only the missing categories
+    console.log(`Inserting ${categoriesToInsert.length} missing default categories`);
+    const { data, error } = await supabase
+      .from('sticky_note_categories')
+      .insert(categoriesToInsert)
+      .select();
+
+    if (error) {
+      console.error('Error inserting default categories:', error);
+      // Fall back to localStorage if database insert fails
+      const userStorageKey = `${STICKY_NOTE_CATEGORIES_KEY}_${userId}`;
+      localStorage.setItem(userStorageKey, JSON.stringify(defaultCategories));
+      console.log('Fell back to local storage after database error');
+      return defaultCategories;
+    }
+    
+    // Return all categories including both existing and newly inserted ones
+    const { data: allCategories } = await supabase
+      .from('sticky_note_categories')
+      .select('*')
+      .eq('user_id', userId);
+      
+    console.log(`Successfully retrieved ${allCategories?.length} total categories`);
+    return allCategories || [];
+  } catch (error) {
+    console.error('Error initializing default categories:', error);
+    // Fall back to localStorage in case of any error
+    const userStorageKey = `${STICKY_NOTE_CATEGORIES_KEY}_${userId}`;
+    localStorage.setItem(userStorageKey, JSON.stringify(defaultCategories));
+    console.log('Fell back to local storage after unexpected error');
+    return defaultCategories;
+  }
+}
+
+// Ensure a user has the default categories
+// Returns true if categories were initialized, false otherwise
+export async function ensureUserHasCategories(userId: string): Promise<boolean> {
+  if (!userId) {
+    console.error('User ID is required to ensure categories');
+    return false;
+  }
+  
+  try {
+    // Check if user already has categories
+    const existingCategories = await getStickyNoteCategories(userId);
+    
+    // If there are categories, no need to initialize
+    if (existingCategories && existingCategories.length > 0) {
+      console.log(`User ${userId} already has ${existingCategories.length} categories`);
+      return true;
+    }
+    
+    console.log(`Initializing default categories for user ${userId}`);
+    const defaultCategories = await initializeDefaultCategories(userId);
+    return defaultCategories.length > 0;
+  } catch (error) {
+    console.error('Error ensuring user has categories:', error);
+    return false;
+  }
+}
+
+// Get all categories for the current user, initializing defaults if none exist
+export async function getStickyNoteCategories(userId: string): Promise<StickyNoteCategory[]> {
+  console.log(`Fetching sticky note categories for user ${userId}`);
+  
+  // Validate userId
+  if (!userId) {
+    console.error('User ID is required to get sticky note categories');
+    return transformDefaultCategories(userId);
+  }
+
+  // Try to get from database first if Supabase is configured
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        console.error('Failed to initialize Supabase client');
+        return getStickyNoteCategoriesFromLocalStorage(userId);
+      }
+      
+      const { data, error } = await supabase
+        .from('sticky_note_categories')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name');
+
+      if (error) {
+        console.error('Error fetching sticky note categories:', error);
+        return getStickyNoteCategoriesFromLocalStorage(userId);
+      }
+
+      console.log(`Found ${data ? data.length : 0} categories for user ${userId} in database`);
+
+      if (data && data.length > 0) {
+        // User has database categories, use those
+        return data;
+      } else {
+        // No categories found for this user - initialize with defaults
+        const defaultCategories = await initializeDefaultCategories(userId);
+        
+        // Try fetching again after initialization if we have Supabase
+        if (isSupabaseConfigured() && supabase) {
+          const { data: initializedData } = await supabase
+            .from('sticky_note_categories')
+            .select('*')
+            .eq('user_id', userId)
+            .order('name');
+          
+          return initializedData || defaultCategories;
+        }
+        
+        return defaultCategories;
+      }
+    } catch (error) {
+      console.error('Error in getStickyNoteCategories:', error);
+      return getStickyNoteCategoriesFromLocalStorage(userId);
+    }
+  }
+  
+  // Fallback to localStorage
+  return getStickyNoteCategoriesFromLocalStorage(userId);
+}
+
+// Helper to transform default categories into StickyNoteCategory objects
+function transformDefaultCategories(userId: string = 'default'): StickyNoteCategory[] {
+  const now = new Date().toISOString();
+  return DEFAULT_STICKY_NOTE_CATEGORIES.map((cat, index) => ({
+    id: `default-${index}-${Date.now()}`,
+    user_id: userId,
+    name: cat.name,
+    color: cat.color,
+    created_at: now,
+    updated_at: now
+  }));
+}
+
+// Create or update a category
+export async function saveStickyNoteCategory(category: Partial<StickyNoteCategory>): Promise<StickyNoteCategory | null> {
+  const isUpdate = !!category.id
+  const now = new Date().toISOString()
+  
+  const categoryData = {
+    ...category,
+    updated_at: now,
+    ...(!isUpdate && { created_at: now })
+  }
+
+  if (!isSupabaseConfigured()) {
+    return saveStickyNoteCategoryToLocalStorage(categoryData)
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.error('Failed to initialize Supabase client');
+      return saveStickyNoteCategoryToLocalStorage(categoryData);
+    }
+
+    const { data, error } = isUpdate
+      ? await supabase
+          .from('sticky_note_categories')
+          .update(categoryData)
+          .eq('id', category.id!)
+          .select()
+      : await supabase
+          .from('sticky_note_categories')
+          .insert([categoryData])
+          .select()
+
+    if (error) throw error;
+    
+    const savedCategory = data?.[0];
+    if (savedCategory) {
+      saveStickyNoteCategoryToLocalStorage(savedCategory, categoryData.user_id);
+      return savedCategory;
+    }
+    return null
+  } catch (error) {
+    console.error('Error saving sticky note category:', error)
+    return saveStickyNoteCategoryToLocalStorage(categoryData)
+  }
+}
+
+// Local storage fallback functions
+function getStickyNotesFromLocalStorage(userId: string): StickyNote[] {
+  if (!isBrowser() || !userId) return [];
+  
+  try {
+    const notesJson = localStorage.getItem(`${STICKY_NOTES_KEY}_${userId}`);
+    if (!notesJson) return [];
+    
+    const notes = JSON.parse(notesJson);
+    if (!Array.isArray(notes)) return [];
+    
+    const now = new Date().toISOString();
+    return notes
+      .filter((note): note is Record<string, any> => note !== null && typeof note === 'object')
+      .map((note) => ({
+        id: note.id || generateStickyNoteId(),
+        user_id: note.user_id || userId,
+        content: note.content || '',
+        color: note.color || '#fff9c4',
+        position_x: typeof note.position_x === 'number' ? note.position_x : 0,
+        position_y: typeof note.position_y === 'number' ? note.position_y : 0,
+        width: typeof note.width === 'number' ? note.width : 200,
+        height: typeof note.height === 'number' ? note.height : 200,
+        z_index: typeof note.z_index === 'number' ? note.z_index : 0,
+        is_archived: Boolean(note.is_archived),
+        category: note.category || 'Uncategorized',
+        category_id: note.category_id || null,
+        created_at: note.created_at || note.createdAt || now,
+        updated_at: note.updated_at || note.updatedAt || now,
+        createdAt: note.createdAt || note.created_at || now,
+        updatedAt: note.updatedAt || note.updated_at || now
+      } as StickyNote));
+  } catch (error) {
+    console.error('Error getting sticky notes from localStorage:', error);
+    return [];
+  }
+}
+
+function deleteStickyNoteFromLocalStorage(noteId: string, userId: string): boolean {
+  if (!isBrowser() || !noteId || !userId) return false;
+  
+  try {
+    const notes = getStickyNotesFromLocalStorage(userId);
+    const initialLength = notes.length;
+    const filteredNotes = notes.filter(note => note && note.id !== noteId);
+    
+    if (filteredNotes.length === initialLength) return false; // No note was removed
+    
+    localStorage.setItem(`${STICKY_NOTES_KEY}_${userId}`, JSON.stringify(filteredNotes));
+    return true;
+  } catch (error) {
+    console.error('Error deleting sticky note from localStorage:', error);
+    return false;
+  }
+}
+
+function getStickyNoteCategoriesFromLocalStorage(userId: string = 'default'): StickyNoteCategory[] {
+  if (!isBrowser()) {
+    return transformDefaultCategories(userId);
+  }
+  
+  try {
+    // Try to get saved categories
+    const key = `${STICKY_NOTE_CATEGORIES_KEY}_${userId}`;
+    const categoriesJson = localStorage.getItem(key);
+    
+    if (!categoriesJson) {
+      // If no categories exist, create and save default ones
+      const defaultCategories = transformDefaultCategories(userId);
+      localStorage.setItem(key, JSON.stringify(defaultCategories));
+      return defaultCategories;
+    }
+    
+    // Parse and validate saved categories
+    const savedCategories = JSON.parse(categoriesJson);
+    
+    // Ensure we have a valid array of categories
+    if (Array.isArray(savedCategories)) {
+      const validCategories = savedCategories.filter((cat): cat is StickyNoteCategory => 
+        cat && 
+        typeof cat === 'object' && 
+        'id' in cat && 
+        'name' in cat &&
+        'color' in cat
+      );
+      
+      // If we have valid categories, return them
+      if (validCategories.length > 0) {
+        return validCategories;
+      }
+    }
+    
+    // If we get here, either the saved data was invalid or empty
+    const defaultCategories = transformDefaultCategories(userId);
+    localStorage.setItem(key, JSON.stringify(defaultCategories));
+    return defaultCategories;
+    
+  } catch (error) {
+    console.error('Error getting sticky note categories from localStorage:', error);
+    // Return default categories as fallback
+    return transformDefaultCategories(userId);
+  }
+}
+
+function saveStickyNoteCategoryToLocalStorage(category: Partial<StickyNoteCategory>, userId?: string): StickyNoteCategory | null {
+  if (!isBrowser()) return null;
+  
+  try {
+    const storageKey = userId ? `${STICKY_NOTE_CATEGORIES_KEY}_${userId}` : STICKY_NOTE_CATEGORIES_KEY;
+    const categories = getStickyNoteCategoriesFromLocalStorage(userId);
+    const now = new Date().toISOString();
+    let updatedCategory: StickyNoteCategory | null = null;
+    
+    // Ensure required fields are present
+    if (!category.name) {
+      console.error('Category name is required');
+      return null;
+    }
+    
+    // Ensure user_id is set
+    const categoryWithUserId = userId ? { ...category, user_id: userId } : category;
+    
+    if (category.id) {
+      // Update existing category
+      const index = categories.findIndex((c: StickyNoteCategory) => c.id === category.id);
+      if (index >= 0) {
+        categories[index] = { 
+          ...categories[index], 
+          ...categoryWithUserId, 
+          updated_at: now 
+        } as StickyNoteCategory;
+        updatedCategory = categories[index];
+      } else {
+        // Create new category with specified ID
+        const newCategory = {
+          ...categoryWithUserId,
+          id: category.id,
+          created_at: now,
+          updated_at: now,
+        } as StickyNoteCategory;
+        categories.push(newCategory);
+        updatedCategory = newCategory;
+      }
+    } else {
+      // Create new category with generated ID
+      const newCategory = {
+        ...categoryWithUserId,
+        id: `cat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        created_at: now,
+        updated_at: now,
+      } as StickyNoteCategory;
+      categories.push(newCategory);
+      updatedCategory = newCategory;
+    }
+    
+    // Save back to localStorage
+    localStorage.setItem(storageKey, JSON.stringify(categories));
+    return updatedCategory;
+  } catch (error) {
+    console.error('Error saving sticky note category to localStorage:', error);
+    return null;
   }
 }
