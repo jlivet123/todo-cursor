@@ -23,7 +23,7 @@ export function PageLayout({
 
   return (
     <div className="flex h-screen bg-slate-900 text-white">
-      {/* Navigation Sidebar */}
+      {/* Navigation Sidebar - Always show but let the sidebar component handle its own visibility */}
       <NavigationSidebar 
         isTaskListPage={isTaskListPage}
         collapseAllColumnsOfType={collapseAllColumnsOfType}

@@ -133,52 +133,51 @@ declare global {
     lastTaskMoveTime?: number;
   }
 }
-import {
-  Plus,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Home,
-  Calendar,
-  Target,
-  LayoutGrid,
-  LogOut,
-  RefreshCw,
-  Lock,
-  Command,
-  Minimize2,
-  Maximize2,
-  Circle,
-  CheckCircle,
-  CornerDownRight,
-  ClipboardList,
-  AlertCircle,
-  CheckSquare,
-  Sunset,
-  Sparkles,
-  CalendarCheck,
-  ClipboardCheck,
-  XCircle,
-  Check,
-  X,
-} from "lucide-react"
+import { Menu, X as CloseIcon, Plus, ChevronDown, ChevronLeft, ChevronRight, Home, Calendar, Target, LayoutGrid, LogOut, RefreshCw, Lock, Command, Minimize2, Maximize2, Circle, CheckCircle, CornerDownRight, ClipboardList, AlertCircle, CheckSquare, Sunset, Sparkles, CalendarCheck, ClipboardCheck, XCircle, Check, X, } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { TaskModal } from "@/components/task-modal"
-import { DndProvider, useDrag, useDrop, DragPreviewImage } from "react-dnd"
-import { HTML5Backend } from "react-dnd-html5-backend"
-import { useTasks } from "@/lib/hooks/use-tasks"
-
-import { useAuth } from "@/lib/auth-context"
+import { useRouter } from 'next/navigation';
+import { DndProvider, useDrag, useDrop, DropTargetMonitor, DragSourceMonitor } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { useAuth } from '@/lib/auth-context';
+import { NavigationSidebar } from '@/components/navigation-sidebar';
 import { Skeleton } from "@/components/ui/skeleton"
 import { isSupabaseConfigured } from "@/lib/supabase"
 import { type Task, type Subtask, resetToSampleData } from "@/lib/storage"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { PageLayout } from "@/components/page-layout"
+
+declare module 'react-dnd' {
+  // Add proper type declarations for useDrag and useDrop
+  export function useDrag<T, R, T2>(
+    spec: {
+      type: string | symbol | (() => string | symbol);
+      item: any;
+      collect?: (monitor: DragSourceMonitor) => T;
+      canDrag?: boolean | ((monitor: DragSourceMonitor) => boolean);
+      begin?: (monitor: DragSourceMonitor) => void;
+      end?: (item: any, monitor: DragSourceMonitor) => void;
+      isDragging?: (monitor: DragSourceMonitor) => boolean;
+    },
+    deps?: readonly any[]
+  ): [any, any, any];
+  
+  export function useDrop<T, R, T2>(
+    spec: {
+      accept: string | symbol | (string | symbol)[];
+      canDrop?: (item: any, monitor: DropTargetMonitor) => boolean;
+      hover?: (item: any, monitor: DropTargetMonitor) => void;
+      drop?: (item: any, monitor: DropTargetMonitor) => void;
+      collect?: (monitor: DropTargetMonitor) => T;
+    },
+    deps?: readonly any[]
+  ): [any, any];
+}
+import { useTasks } from "@/lib/hooks/use-tasks"
+import Link from "next/link"
 
 // Drag item types
 const ITEM_TYPE = "TASK"
@@ -1137,8 +1136,72 @@ function DayColumn({
   )
 }
 
+// Mobile Header Component
+const MobileHeader = ({ onMenuClick, isMenuOpen }: { onMenuClick: () => void, isMenuOpen: boolean }) => (
+  <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
+    <div className="flex items-center">
+      <button
+        onClick={onMenuClick}
+        className="p-2 -ml-2 text-slate-100 hover:bg-slate-700 rounded-md transition-colors"
+        aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={isMenuOpen}
+      >
+        {isMenuOpen ? (
+          <X className="h-6 w-6" />
+        ) : (
+          <Menu className="h-6 w-6" />
+        )}
+      </button>
+    </div>
+    <h1 className="text-xl font-semibold text-white">TaskMaster</h1>
+    <div className="w-6" /> {/* Spacer for balance */}
+  </div>
+);
+
 // Tasks main component
 export default function Tasks() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (isMobileMenuOpen && !target.closest('.sidebar-container')) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMobileMenuOpen]);
+  
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
+  
+  // Collapse/expand all columns functions
+  const collapseAllColumnsOfType = (columnType: "personal" | "work") => {
+    // Implementation depends on your column state management
+    // This is a placeholder - replace with your actual implementation
+    console.log(`Collapse all ${columnType} columns`);
+  };
+
+  const expandAllColumnsOfType = (columnType: "personal" | "work") => {
+    // Implementation depends on your column state management
+    // This is a placeholder - replace with your actual implementation
+    console.log(`Expand all ${columnType} columns`);
+  };
   const [localLoading, setLocalLoading] = useState(true);
   const { 
     days, 
@@ -1651,119 +1714,135 @@ export default function Tasks() {
   }
   
   return (
-    <PageLayout>
-      <div className="w-full">
-        {notification && notification.visible && (
-          <TaskNotification 
-            message={notification.message}
-            type={notification.type}
-            onClose={hideNotification}
-          />
-        )}
-        <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center space-x-2">
-            <Button variant="ghost" size="sm" onClick={handleRefresh}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-          </div>
-          <h1 className="text-lg font-semibold">My Tasks</h1>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => scrollDays("left")}
-              disabled={currentDayIndex === 0}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm text-slate-400">
-              {visibleDays.length > 0 &&
-                `${format(visibleDays[currentDayIndex]?.date || new Date(), "MMMM d")}`}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => scrollDays("right")}
-              disabled={currentDayIndex >= days.length - 1}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        
-        {localLoading && days.length === 0 ? (
-          <div className="flex justify-center items-center h-[calc(100vh-170px)]">
-            <p className="text-slate-400 text-lg">Loading...</p>
-          </div>
-        ) : days.length === 0 ? (
-          <div className="flex flex-col justify-center items-center h-[calc(100vh-170px)]">
-            <AlertCircle className="h-12 w-12 text-slate-400 mb-4" />
-            <h3 className="text-lg font-medium">No tasks found</h3>
-            <p className="text-slate-400 mt-1 mb-4">Create a task to get started</p>
-            <Button onClick={() => {
-              // Default to opening task input in today's Personal column
-              const todayIndex = days.findIndex(day => isToday(day.date));
-              const targetIndex = todayIndex >= 0 ? todayIndex : 0;
-              handleToggleNewTaskInput(targetIndex, "personal");
-            }}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Task
-            </Button>
-          </div>
-        ) : (
-          <DndProvider backend={HTML5Backend} options={{ enableMouseEvents: true, enableTouchEvents: true }}>
-            <div className="flex overflow-x-auto overflow-y-hidden h-[calc(100vh-120px)] w-full px-2 sm:px-4">
-              {visibleDays.map((day, dayIndex) => (
-                <DayColumn
-                  key={format(day.date, "yyyy-MM-dd")}
-                  day={day}
-                  dayIndex={dayIndex}
-                  onTaskClick={handleTaskClick}
-                  onToggleCompletion={handleToggleCompletion}
-                  onToggleSubtaskCompletion={handleToggleSubtaskCompletion}
-                  moveTask={handleMove}
-                  updateTask={updateTask}
-                  personalIsNewTaskOpen={personalNewTaskOpen[dayIndex]}
-                  workIsNewTaskOpen={workNewTaskOpen[dayIndex]}
-                  personalNewTaskText={personalNewTaskTexts[dayIndex]}
-                  workNewTaskText={workNewTaskTexts[dayIndex]}
-                  onPersonalNewTaskTextChange={(text) => handlePersonalNewTaskTextChange(dayIndex, text)}
-                  onWorkNewTaskTextChange={(text) => handleWorkNewTaskTextChange(dayIndex, text)}
-                  onTogglePersonalNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "personal")}
-                  onToggleWorkNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "work")}
-                  onAddNewTask={handleAddNewTask}
-                  isLoading={isLoading || localLoading}
-                  onTaskCategoryChange={handleTaskCategoryChange}
-                  onKeyDown={handleInputKeyDown}
-                  isPersonalCollapsed={personalCollapsed[dayIndex]}
-                  isWorkCollapsed={workCollapsed[dayIndex]}
-                  onTogglePersonalCollapse={() => toggleColumnCollapse(dayIndex, "personal")}
-                  onToggleWorkCollapse={() => toggleColumnCollapse(dayIndex, "work")}
-                />
-              ))}
-            </div>
-          </DndProvider>
-        )}
-        
-        {isTaskModalOpen && selectedTask && (
-          <TaskModal
-            task={selectedTask}
-            isOpen={isTaskModalOpen}
-            onClose={() => setIsTaskModalOpen(false)}
-            onSave={async (updatedTask) => {
-              await updateTask(updatedTask.id, updatedTask);
-              setIsTaskModalOpen(false);
-              setSelectedTask(null);
-            }}
-            onDelete={async (taskId) => {
-              await deleteTask(taskId);
-              setIsTaskModalOpen(false);
-              setSelectedTask(null);
-            }}
-          />
-        )}
+    <PageLayout 
+      collapseAllColumnsOfType={collapseAllColumnsOfType}
+      expandAllColumnsOfType={expandAllColumnsOfType}
+    >
+      {/* Mobile Header - Only for mobile view */}
+      <div className="lg:hidden">
+        <MobileHeader 
+          onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          isMenuOpen={isMobileMenuOpen}
+        />
       </div>
-    </PageLayout>
+      
+      <div className="flex-1 overflow-auto bg-slate-900">
+          {notification && notification.visible && (
+            <TaskNotification 
+              message={notification.message}
+              type={notification.type}
+              onClose={hideNotification}
+            />
+          )}
+          
+          {/* Header */}
+          <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 flex items-center justify-between sticky top-0 z-20">
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="sm" onClick={handleRefresh}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+            
+            <h1 className="text-lg font-semibold">My Tasks</h1>
+            
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => scrollDays("left")}
+                disabled={currentDayIndex === 0}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-slate-400">
+                {visibleDays.length > 0 &&
+                  `${format(visibleDays[currentDayIndex]?.date || new Date(), "MMMM d")}`}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => scrollDays("right")}
+                disabled={currentDayIndex >= days.length - 1}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          
+          {/* Content */}
+          {localLoading && days.length === 0 ? (
+            <div className="flex justify-center items-center h-[calc(100vh-170px)]">
+              <p className="text-slate-400 text-lg">Loading...</p>
+            </div>
+          ) : days.length === 0 ? (
+            <div className="flex flex-col justify-center items-center h-[calc(100vh-170px)]">
+              <AlertCircle className="h-12 w-12 text-slate-400 mb-4" />
+              <h3 className="text-lg font-medium">No tasks found</h3>
+              <p className="text-slate-400 mt-1 mb-4">Create a task to get started</p>
+              <Button onClick={() => {
+                const todayIndex = days.findIndex(day => isToday(day.date));
+                const targetIndex = todayIndex >= 0 ? todayIndex : 0;
+                handleToggleNewTaskInput(targetIndex, "personal");
+              }}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Task
+              </Button>
+            </div>
+          ) : (
+            <DndProvider backend={HTML5Backend} options={{ enableMouseEvents: true, enableTouchEvents: true }}>
+              <div className="flex overflow-x-auto overflow-y-hidden h-[calc(100vh-120px)] w-full px-2 sm:px-4">
+                {visibleDays.map((day, dayIndex) => (
+                  <DayColumn
+                    key={format(day.date, "yyyy-MM-dd")}
+                    day={day}
+                    dayIndex={dayIndex}
+                    onTaskClick={handleTaskClick}
+                    onToggleCompletion={handleToggleCompletion}
+                    onToggleSubtaskCompletion={handleToggleSubtaskCompletion}
+                    moveTask={handleMove}
+                    updateTask={updateTask}
+                    personalIsNewTaskOpen={personalNewTaskOpen[dayIndex]}
+                    workIsNewTaskOpen={workNewTaskOpen[dayIndex]}
+                    personalNewTaskText={personalNewTaskTexts[dayIndex]}
+                    workNewTaskText={workNewTaskTexts[dayIndex]}
+                    onPersonalNewTaskTextChange={(text) => handlePersonalNewTaskTextChange(dayIndex, text)}
+                    onWorkNewTaskTextChange={(text) => handleWorkNewTaskTextChange(dayIndex, text)}
+                    onTogglePersonalNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "personal")}
+                    onToggleWorkNewTaskInput={() => handleToggleNewTaskInput(dayIndex, "work")}
+                    onAddNewTask={handleAddNewTask}
+                    isLoading={isLoading || localLoading}
+                    onTaskCategoryChange={handleTaskCategoryChange}
+                    onKeyDown={handleInputKeyDown}
+                    isPersonalCollapsed={personalCollapsed[dayIndex]}
+                    isWorkCollapsed={workCollapsed[dayIndex]}
+                    onTogglePersonalCollapse={() => toggleColumnCollapse(dayIndex, "personal")}
+                    onToggleWorkCollapse={() => toggleColumnCollapse(dayIndex, "work")}
+                  />
+                ))}
+              </div>
+            </DndProvider>
+          )}
+          
+          {/* Task Modal */}
+          {isTaskModalOpen && selectedTask && (
+            <TaskModal
+              task={selectedTask}
+              isOpen={isTaskModalOpen}
+              onClose={() => setIsTaskModalOpen(false)}
+              onSave={async (updatedTask) => {
+                await updateTask(updatedTask.id, updatedTask);
+                setIsTaskModalOpen(false);
+                setSelectedTask(null);
+              }}
+              onDelete={async (taskId) => {
+                await deleteTask(taskId);
+                setIsTaskModalOpen(false);
+                setSelectedTask(null);
+              }}
+            />
+          )}
+        </div>
+      </PageLayout>
   )
 }
