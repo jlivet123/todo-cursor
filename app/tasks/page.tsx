@@ -864,7 +864,7 @@ function CategoryColumn({
                 ? tasks.filter(task => {
                     const isOverdue = isTaskOverdue(task, today);
                     if (isOverdue) {
-                      logTaskInfo(task, 'overdue', 'Task is past due date');
+                      // logTaskInfo(task, 'overdue', 'Task is past due date');
                     }
                     return isOverdue;
                   })
@@ -874,7 +874,7 @@ function CategoryColumn({
                 const isTodo = isTaskTodo(task, currentDay, today, isPastDay) && 
                              !overdueTasks.some(ov => ov.id === task.id);
                 if (isTodo) {
-                  logTaskInfo(task, 'todos', 'Task is active and due/started today');
+                  // logTaskInfo(task, 'todos', 'Task is active and due/started today');
                 }
                 return isTodo;
               });
@@ -882,7 +882,7 @@ function CategoryColumn({
               const completedTasks = tasks.filter(task => {
                 const isCompleted = isTaskCompleted(task, currentDay);
                 if (isCompleted) {
-                  logTaskInfo(task, 'completed', 'Task was completed on this day');
+                  // logTaskInfo(task, 'completed', 'Task was completed on this day');
                 }
                 return isCompleted;
               });
@@ -1702,14 +1702,7 @@ export default function Tasks() {
         
         {localLoading && days.length === 0 ? (
           <div className="flex justify-center items-center h-[calc(100vh-170px)]">
-            <div className="space-y-4">
-              <Skeleton className="h-8 w-48 mb-4" />
-              <div className="space-y-2">
-                <Skeleton className="h-12 w-96" />
-                <Skeleton className="h-12 w-80" />
-                <Skeleton className="h-12 w-72" />
-              </div>
-            </div>
+            <p className="text-slate-400 text-lg">Loading...</p>
           </div>
         ) : days.length === 0 ? (
           <div className="flex flex-col justify-center items-center h-[calc(100vh-170px)]">
