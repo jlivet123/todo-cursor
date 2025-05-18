@@ -115,6 +115,9 @@ const isBrowser = () => typeof window !== "undefined"
 function getTasksFromLocalStorage(): Task[] {
   if (!isBrowser()) return []
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     // Check if we've initialized with sample data
     const initialized = localStorage.getItem(INITIALIZED_KEY)
@@ -137,6 +140,9 @@ function getTasksFromLocalStorage(): Task[] {
 function saveTasksToLocalStorage(tasks: Task[]): void {
   if (!isBrowser()) return
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
   } catch (error) {
@@ -156,6 +162,9 @@ export async function getTasks(): Promise<Task[]> {
     return getTasksFromLocalStorage()
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     // Get tasks
     const { data: tasks, error: tasksError } = await supabase
@@ -192,7 +201,10 @@ export async function getTasks(): Promise<Task[]> {
       let formattedDueDate = '';
       
       // Process start date
-      try {
+      console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
         if (task.start_date) {
           // If it's already in ISO format, use it directly
           if (typeof task.start_date === 'string' && task.start_date.includes('-')) {
@@ -216,7 +228,10 @@ export async function getTasks(): Promise<Task[]> {
       }
       
       // Process due date
-      try {
+      console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
         if (task.due_date) {
           // If it's already in ISO format, use it directly
           if (typeof task.due_date === 'string' && task.due_date.includes('-')) {
@@ -312,6 +327,9 @@ export async function saveTask(task: Task): Promise<Task | null> {
     return task
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     // Get user ID
     const {
@@ -327,7 +345,10 @@ export async function saveTask(task: Task): Promise<Task | null> {
     // but don't send it to Supabase if the column doesn't exist
     let completionDateMMMD = task.completionDateMMMD;
     if (task.completionDate && !completionDateMMMD) {
-      try {
+      console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
         // Try to generate the MMM d format from the ISO date
         const completionDate = new Date(task.completionDate + 'T00:00:00');
         if (!isNaN(completionDate.getTime())) {
@@ -344,7 +365,10 @@ export async function saveTask(task: Task): Promise<Task | null> {
     const formatDateForDatabase = (dateString: string | undefined): string | null => {
       if (!dateString) return null;
       
-      try {
+      console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
         // If it's already in ISO format, return as is
         if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
           return dateString;
@@ -398,7 +422,10 @@ export async function saveTask(task: Task): Promise<Task | null> {
       throw new Error('Supabase client is not available');
     }
     
-    try {
+    console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
       const { data, error } = await supabase
         .from("tasks")
         .upsert(taskData)
@@ -453,7 +480,10 @@ export async function saveTask(task: Task): Promise<Task | null> {
       
       // Process subtasks if they exist
       if (task.subtasks && task.subtasks.length > 0) {
-        try {
+        console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
           // Prepare subtask data
           const subtaskData = task.subtasks.map((subtask, index) => ({
             id: subtask.id,
@@ -524,6 +554,9 @@ export async function deleteTaskFromSupabase(taskId: string): Promise<boolean> {
     return true
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     // Delete the task (subtasks will be deleted via cascade)
     const { error } = await supabase.from("tasks").delete().eq("id", taskId)
@@ -559,6 +592,9 @@ export async function saveTasks(tasks: Task[]): Promise<void> {
     return
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     for (const task of tasks) {
       await saveTask(task)
@@ -585,6 +621,9 @@ export async function resetToSampleData(): Promise<boolean> {
     return true
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     const {
       data: { user },
@@ -630,6 +669,9 @@ export async function getUser() {
     return MOCK_USER
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     const { data } = await supabase.auth.getUser()
     return data.user || MOCK_USER
@@ -683,6 +725,9 @@ async function getCurrentUser() {
   const supabase = getSupabaseClient()
   if (!supabase) return null
   
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     const { data: { user } } = await supabase.auth.getUser()
     return user
@@ -699,7 +744,10 @@ async function getCurrentUser() {
 export async function getDecisionMatrix(): Promise<DecisionMatrixEntry[]> {
   // Try to get from Supabase if configured
   if (isSupabaseConfigured()) {
-    try {
+    console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
       const supabase = getSupabaseClient()
       if (!supabase) return getDecisionMatrixFromLocalStorage()
       
@@ -748,7 +796,10 @@ export async function getDecisionMatrix(): Promise<DecisionMatrixEntry[]> {
 export async function saveDecisionMatrix(entries: DecisionMatrixEntry[]): Promise<void> {
   // Try to save to Supabase if configured
   if (isSupabaseConfigured()) {
-    try {
+    console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
       const supabase = getSupabaseClient()
       if (!supabase) {
         saveDecisionMatrixToLocalStorage(entries)
@@ -828,7 +879,10 @@ export async function saveDecisionMatrix(entries: DecisionMatrixEntry[]): Promis
  */
 export async function deleteDecisionMatrixEntry(id: string): Promise<void> {
   if (isSupabaseConfigured()) {
-    try {
+    console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
       const supabase = getSupabaseClient()
       if (!supabase) return
       
@@ -850,6 +904,9 @@ export async function deleteDecisionMatrixEntry(id: string): Promise<void> {
 function getDecisionMatrixFromLocalStorage(): DecisionMatrixEntry[] {
   if (!isBrowser()) return []
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     const matrixJson = localStorage.getItem(DECISION_MATRIX_STORAGE_KEY)
     return matrixJson ? JSON.parse(matrixJson) : []
@@ -862,6 +919,9 @@ function getDecisionMatrixFromLocalStorage(): DecisionMatrixEntry[] {
 function saveDecisionMatrixToLocalStorage(entries: DecisionMatrixEntry[]): void {
   if (!isBrowser()) return
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     localStorage.setItem(DECISION_MATRIX_STORAGE_KEY, JSON.stringify(entries))
   } catch (error) {
@@ -925,6 +985,9 @@ export function getCurrentUserId(): string | null {
 // Save a sticky note to local storage
 export function saveStickyNoteToLocalStorage(note: Partial<StickyNote>): StickyNote | null {
   if (!isBrowser()) return null;
+  
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
   
   try {
     // Try to get user ID from the note first, then from auth
@@ -1068,7 +1131,7 @@ export async function getStickyNotes(userId: string): Promise<StickyNote[]> {
   if (!isSupabaseConfigured()) {
     return getStickyNotesFromLocalStorage(validUserId);
   }
-
+  
   try {
     // Try to get notes from Supabase
     const supabase = getSupabaseClient();
@@ -1095,7 +1158,10 @@ export async function getStickyNotes(userId: string): Promise<StickyNote[]> {
     
     // Also save to local storage as fallback
     if (isBrowser()) {
-      try {
+      console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
+  try {
         localStorage.setItem(`${STICKY_NOTES_KEY}_${userId}`, JSON.stringify(notes));
       } catch (e) {
         console.error('Error saving notes to localStorage:', e);
@@ -1121,6 +1187,9 @@ export async function saveStickyNote(note: StickyNoteInput | Partial<StickyNote>
   const now = new Date().toISOString();
   const isNewNote = !note?.id;
 
+  console.log('[saveStickyNote] Starting with note ID:', note?.id || 'new');
+  console.log('[saveStickyNote] Note type:', isNewNote ? 'New note' : 'Existing note');
+  
   try {
     // Prepare note data with required fields
     const noteData: Partial<StickyNote> = {
@@ -1173,18 +1242,29 @@ export async function saveStickyNote(note: StickyNoteInput | Partial<StickyNote>
     const dbNote = mapAppNoteToDbNote(safeNoteData);
 
     // Try to save note to Supabase if configured
+    console.log('[saveStickyNote] Attempting to save to Supabase...');
     if (isSupabaseConfigured() && isBrowser()) {
       const supabase = getSupabaseClient();
       if (!supabase) {
         throw new Error('Failed to initialize Supabase client');
       }
 
+      console.log('[saveStickyNote] Sending to Supabase table: sticky_notes');
       const { data, error } = await supabase
         .from('sticky_notes')
         .upsert([dbNote])
         .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[saveStickyNote] Supabase upsert error:', error);
+        console.error('[saveStickyNote] Error details:', {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          message: error.message
+        });
+        throw error;
+      }
       
       if (data && Array.isArray(data) && data[0]) {
         const savedNote = mapDbNoteToAppNote(data[0]);
@@ -1200,12 +1280,42 @@ export async function saveStickyNote(note: StickyNoteInput | Partial<StickyNote>
       user_id: userId // Ensure user_id is set when falling back to local storage
     });
   } catch (error) {
-    console.error('Error saving sticky note:', error);
-    // Fall back to local storage if Supabase fails
-    return saveStickyNoteToLocalStorage({
-      ...note,
-      user_id: userId // Ensure user_id is set when falling back to local storage
-    });
+    console.error('[saveStickyNote] Error in main try-catch:', error);
+    
+    try {
+      // Create a safe note object with all required fields for local storage
+      const now = new Date().toISOString();
+      const safeNoteForLocalStorage: StickyNote = {
+        id: (note && 'id' in note && note.id) || uuidv4(),
+        user_id: userId,
+        content: (note && 'content' in note && note.content) || '',
+        color: (note && 'color' in note && note.color) || '#fff9c4',
+        position_x: (note && 'position_x' in note && typeof note.position_x === 'number') ? note.position_x : 0,
+        position_y: (note && 'position_y' in note && typeof note.position_y === 'number') ? note.position_y : 0,
+        width: (note && 'width' in note && typeof note.width === 'number') ? note.width : 200,
+        height: (note && 'height' in note && typeof note.height === 'number') ? note.height : 200,
+        z_index: (note && 'z_index' in note && typeof note.z_index === 'number') ? note.z_index : 0,
+        is_archived: Boolean(note && 'is_archived' in note && note.is_archived),
+        category: (note && 'category' in note && note.category) || 'Uncategorized',
+        category_id: (note && 'category_id' in note && note.category_id) || null,
+        created_at: (note && 'created_at' in note && note.created_at) || 
+                   (note && 'createdAt' in note && note.createdAt) || 
+                   now,
+        updated_at: now,
+        createdAt: (note && 'createdAt' in note && note.createdAt) || 
+                  (note && 'created_at' in note && note.created_at) || 
+                  now,
+        updatedAt: now,
+      };
+      
+      console.log('Falling back to local storage with note:', safeNoteForLocalStorage);
+      
+      // Fall back to local storage if Supabase fails
+      return saveStickyNoteToLocalStorage(safeNoteForLocalStorage);
+    } catch (fallbackError) {
+      console.error('Error in fallback to local storage:', fallbackError);
+      throw new Error('Failed to save note to local storage after Supabase error');
+    }
   }
 }
 
@@ -1221,6 +1331,9 @@ export async function deleteStickyNote(noteId: string, userId: string): Promise<
     return deleteStickyNoteFromLocalStorage(noteId, userId);
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     const supabase = getSupabaseClient();
     if (!supabase) {
@@ -1263,6 +1376,9 @@ async function initializeDefaultCategories(userId: string): Promise<StickyNoteCa
 
   console.log(`Creating ${defaultCategories.length} default categories for user ${userId}`);
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     if (!isSupabaseConfigured()) {
       // Save to local storage if Supabase is not configured
@@ -1456,6 +1572,9 @@ export async function saveStickyNoteCategory(category: Partial<StickyNoteCategor
     return saveStickyNoteCategoryToLocalStorage(categoryData)
   }
 
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     const supabase = getSupabaseClient();
     if (!supabase) {
@@ -1529,6 +1648,9 @@ function getStickyNotesFromLocalStorage(userId: string): StickyNote[] {
 function deleteStickyNoteFromLocalStorage(noteId: string, userId: string): boolean {
   if (!isBrowser() || !noteId || !userId) return false;
   
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
+  
   try {
     const notes = getStickyNotesFromLocalStorage(userId);
     const initialLength = notes.length;
@@ -1548,6 +1670,9 @@ function getStickyNoteCategoriesFromLocalStorage(userId: string = 'default'): St
   if (!isBrowser()) {
     return transformDefaultCategories(userId);
   }
+  
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
   
   try {
     // Try to get saved categories
@@ -1594,6 +1719,9 @@ function getStickyNoteCategoriesFromLocalStorage(userId: string = 'default'): St
 
 function saveStickyNoteCategoryToLocalStorage(category: Partial<StickyNoteCategory>, userId?: string): StickyNoteCategory | null {
   if (!isBrowser()) return null;
+  
+  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
+  console.log('User ID:', userId);
   
   try {
     const storageKey = userId ? `${STICKY_NOTE_CATEGORIES_KEY}_${userId}` : STICKY_NOTE_CATEGORIES_KEY;

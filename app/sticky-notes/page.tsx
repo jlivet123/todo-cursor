@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { SimplifiedStickyNote } from "@/components/simplified-sticky-note"
 import { AddStickyNote } from "@/components/add-sticky-note"
 import { 
@@ -27,6 +27,28 @@ export default function StickyNotesPage() {
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { userId, isAuthenticated } = useAuthStatus();
+  
+  // Calculate note counts per category
+  const noteCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    
+    // Initialize all categories with 0
+    categories.forEach(cat => {
+      if (cat?.id) {
+        counts[cat.id] = 0;
+      }
+    });
+    
+    // Count notes in each category
+    notes.forEach(note => {
+      if (note?.category_id && counts[note.category_id] !== undefined) {
+        counts[note.category_id]++;
+      }
+    });
+    
+    console.log('Calculated note counts:', counts);
+    return counts;
+  }, [categories, notes]);
 
   // Load notes and ensure categories exist
   const loadData = useCallback(async () => {
@@ -53,9 +75,17 @@ export default function StickyNotesPage() {
         setSelectedCategory(allCategory ? allCategory.id : fetchedCategories[0].id);
       }
       
-      // Load notes
+      // Load notes and include category names
       const fetchedNotes = await getStickyNotes(userId);
-      setNotes(fetchedNotes);
+      
+      // Map notes to include category names
+      const notesWithCategoryNames = fetchedNotes.map(note => ({
+        ...note,
+        // Find the category and include its name, or use 'Uncategorized' as fallback
+        category: categories.find(cat => cat.id === note.category_id)?.name || 'Uncategorized'
+      }));
+      
+      setNotes(notesWithCategoryNames);
     } catch (error) {
       console.error('Error loading data:', error);
       setError('Failed to load sticky notes. Please try again.');
@@ -105,9 +135,14 @@ export default function StickyNotesPage() {
       // Pass the userId explicitly
       const savedNote = await saveStickyNote(newNote, userId);
       if (savedNote) {
-        setNotes(prevNotes => [...prevNotes, savedNote])
+        // Include the category name in the saved note
+        const savedNoteWithCategory = {
+          ...savedNote,
+          category: category?.name || 'Uncategorized'
+        };
+        setNotes(prevNotes => [...prevNotes, savedNoteWithCategory]);
       }
-      setIsAddingNote(false)
+      setIsAddingNote(false);
     } catch (error) {
       console.error('Error adding note:', error)
     }
@@ -118,46 +153,89 @@ export default function StickyNotesPage() {
       console.error('Cannot delete note: User not authenticated');
       return false;
     }
+    
     try {
-      // Get the current user ID
-      const currentUserId = getCurrentUserId();
-      if (!currentUserId) {
-        console.error('User not authenticated');
-        return;
-      }
-      
-      const success = await deleteStickyNote(id, currentUserId);
+      const success = await deleteStickyNote(id, userId);
       if (success) {
         setNotes(prevNotes => prevNotes.filter(note => note.id !== id));
       }
+      return success;
     } catch (error) {
       console.error('Error deleting note:', error);
+      return false;
     }
   }
 
-  const handleUpdateNote = async (id: string, content: string, category?: string) => {
+  const handleUpdateNote = async (id: string, content: string, categoryId?: string) => {
     if (!isAuthenticated || !userId) {
       console.error('Cannot update note: User not authenticated');
       return;
     }
+    
     try {
-      const noteToUpdate = notes.find(note => note.id === id);
-      if (!noteToUpdate) return;
+      console.log(`[handleUpdateNote] Starting update for note ${id}`);
       
-      const updates = {
-        ...noteToUpdate,
-        content,
-        category: category || noteToUpdate.category,
+      const noteToUpdate = notes.find(note => note.id === id);
+      if (!noteToUpdate) {
+        console.error(`[handleUpdateNote] Note with id ${id} not found`);
+        return;
+      }
+      
+      // If category is being updated, find its name
+      let categoryName = noteToUpdate.category;
+      let categoryIdToUse = noteToUpdate.category_id;
+      
+      if (categoryId) {
+        const category = categories.find(cat => cat.id === categoryId);
+        if (category) {
+          categoryName = category.name;
+          categoryIdToUse = categoryId;
+        } else {
+          console.warn(`[handleUpdateNote] Category with id ${categoryId} not found`);
+        }
+      }
+      
+      // Create a complete note object with all required fields
+      const updates: Partial<StickyNoteType> = {
+        id,
+        user_id: userId,
+        content: content || noteToUpdate.content,
+        color: noteToUpdate.color || '#fff9c4',
+        position_x: typeof noteToUpdate.position_x === 'number' ? noteToUpdate.position_x : 0,
+        position_y: typeof noteToUpdate.position_y === 'number' ? noteToUpdate.position_y : 0,
+        width: typeof noteToUpdate.width === 'number' ? noteToUpdate.width : 200,
+        height: typeof noteToUpdate.height === 'number' ? noteToUpdate.height : 200,
+        z_index: typeof noteToUpdate.z_index === 'number' ? noteToUpdate.z_index : 0,
+        is_archived: Boolean(noteToUpdate.is_archived),
+        category_id: categoryIdToUse || null,
+        created_at: noteToUpdate.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        category: categoryName || 'Uncategorized',
+        // Ensure we have the original createdAt if it exists
+        ...(noteToUpdate.createdAt ? { createdAt: noteToUpdate.createdAt } : {})
       };
+      
+      console.log('[handleUpdateNote] Updating note with data:', updates);
       
       // Pass the userId explicitly
       const updatedNote = await saveStickyNote(updates, userId);
+      
       if (updatedNote) {
+        console.log('[handleUpdateNote] Successfully updated note:', updatedNote);
+        
+        // Include the category name in the updated note
+        const updatedNoteWithCategory = {
+          ...updatedNote,
+          category: categoryName || 'Uncategorized',
+          category_id: categoryIdToUse || null
+        };
+        
         setNotes(prevNotes => 
-          prevNotes.map(note => note.id === id ? { ...note, ...updatedNote } : note)
+          prevNotes.map(note => note.id === id ? updatedNoteWithCategory : note)
         );
+        
+        return true;
       }
     } catch (error) {
       console.error('Error updating note:', error);
@@ -266,6 +344,7 @@ export default function StickyNotesPage() {
         onAddNote={handleAddNote}
         categories={categories}
         defaultCategoryId={selectedCategory || undefined}
+        noteCounts={noteCounts}
       />
     </div>
   );
