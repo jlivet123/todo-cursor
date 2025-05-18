@@ -1317,13 +1317,15 @@ export async function deleteStickyNote(noteId: string, userId: string): Promise<
     return false;
   }
 
+  if (!noteId) {
+    console.error('Note ID is required to delete sticky note');
+    return false;
+  }
+
   // If Supabase is not configured, use local storage
   if (!isSupabaseConfigured() || !isBrowser()) {
     return deleteStickyNoteFromLocalStorage(noteId, userId);
   }
-
-  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
-  console.log('User ID:', userId);
   
   try {
     const supabase = getSupabaseClient();
@@ -1337,7 +1339,10 @@ export async function deleteStickyNote(noteId: string, userId: string): Promise<
       .eq('id', noteId)
       .eq('user_id', userId);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase delete error:', error);
+      throw error;
+    }
 
     // Also delete from local storage
     return deleteStickyNoteFromLocalStorage(noteId, userId);
@@ -1653,9 +1658,6 @@ function getStickyNotesFromLocalStorage(userId: string): StickyNote[] {
 
 function deleteStickyNoteFromLocalStorage(noteId: string, userId: string): boolean {
   if (!isBrowser() || !noteId || !userId) return false;
-  
-  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
-  console.log('User ID:', userId);
   
   try {
     const notes = getStickyNotesFromLocalStorage(userId);
