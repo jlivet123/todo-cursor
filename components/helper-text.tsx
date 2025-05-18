@@ -53,8 +53,7 @@ export function HelperText({ title, content }: HelperTextProps) {
       {isOpen && (
         <div
           ref={popupRef}
-          className="fixed z-50 top-1/4 left-1/2 transform -translate-x-1/2 w-[90%] max-w-2xl p-6 bg-card rounded-lg shadow-lg border max-h-[70vh] overflow-y-auto"
-        >
+          className="fixed z-50 top-[10%] left-1/2 transform -translate-x-1/2 w-[90%] max-w-2xl p-6 bg-card rounded-lg shadow-lg border max-h-[80vh] overflow-y-auto">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-medium text-lg">{title}</h3>
             <Button variant="ghost" size="sm" className="h-6 w-6 rounded-full p-0" onClick={() => setIsOpen(false)}>
