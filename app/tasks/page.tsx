@@ -450,7 +450,7 @@ function DraggableTask({
           <div className="flex-1 min-w-0">
             <h3
               className={cn(
-                "font-medium truncate",
+                "font-medium break-words whitespace-normal w-full",
                 task.completed && "line-through text-slate-400"
               )}
             >
@@ -773,9 +773,9 @@ function CategoryColumn({
   return (
     <div
       className={cn(
-        "flex flex-col h-full transition-all duration-300 ease-in-out w-full",
+        "flex flex-col h-full transition-all duration-300 ease-in-out w-full overflow-hidden",
         isCollapsed 
-          ? "min-w-[50px] max-w-[50px]" 
+          ? "min-w-[70px] max-w-[70px] px-1.5 py-2" 
           : "min-w-[280px] sm:min-w-[320px] flex-1 p-2 sm:p-4"
       )}
     >
@@ -814,16 +814,23 @@ function CategoryColumn({
             </div>
           </>
         ) : (
-          <button
-            className="flex items-center justify-center w-full h-6 text-slate-400 hover:text-slate-200 cursor-pointer"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggleCollapse();
-            }}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </button>
+          <div className="flex flex-col items-center justify-center w-full space-y-1">
+            <div className="text-xs text-center text-slate-400 font-medium break-words w-full px-1">
+              {title.split(' ').map((word, i) => (
+                <div key={i} className="leading-tight">{word}</div>
+              ))}
+            </div>
+            <button
+              className="flex items-center justify-center w-full text-slate-400 hover:text-slate-200 cursor-pointer mt-1"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleCollapse();
+              }}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -1071,10 +1078,10 @@ function DayColumn({
       )}
       style={{
         width: isPersonalCollapsed && isWorkCollapsed 
-          ? '120px' 
+          ? '80px' 
           : isPersonalCollapsed || isWorkCollapsed 
-            ? 'calc(460px + 8px)' // Half width + gap
-            : '920px' // Full width
+            ? 'calc(380px + 6px)' // Adjusted half width + gap
+            : '766px' // Adjusted full width
       }}
     >
       <div className="px-4 py-3 bg-slate-900/50 border-b border-slate-700 sticky top-0 z-10">
