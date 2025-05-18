@@ -1496,25 +1496,15 @@ export default function Tasks() {
         localStorage.setItem(storageKey, JSON.stringify(storedTasks));
       }
       
-      // Clear the input
+      // Clear the input but keep it open for the next task
       if (columnType === "personal") {
         const updatedTexts = [...personalNewTaskTexts];
         updatedTexts[dayIndex] = '';
         setPersonalNewTaskTexts(updatedTexts);
-        
-        // Close the input after adding
-        const updatedVisibility = [...personalNewTaskOpen];
-        updatedVisibility[dayIndex] = false;
-        setPersonalNewTaskOpen(updatedVisibility);
       } else {
         const updatedTexts = [...workNewTaskTexts];
         updatedTexts[dayIndex] = '';
         setWorkNewTaskTexts(updatedTexts);
-        
-        // Close the input after adding
-        const updatedVisibility = [...workNewTaskOpen];
-        updatedVisibility[dayIndex] = false;
-        setWorkNewTaskOpen(updatedVisibility);
       }
       
       // Show success notification
