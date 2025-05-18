@@ -126,11 +126,18 @@ export function AddStickyNote({
             setCategories(fetchedCategories);
             setSelectedCategory(categoryToSelect);
           } else {
-            console.log('No categories found, initializing defaults');
-            const defaultCategories = await initializeDefaultCategories(userId);
-            console.log('Initialized default categories:', defaultCategories);
-            setCategories(defaultCategories);
-            setSelectedCategory(defaultCategories[0]);
+            console.log('No categories found, creating default category');
+            const defaultCategory: StickyNoteCategory = {
+              id: 'default',
+              user_id: userId || 'local-user',
+              name: 'General',
+              color: '#5c4d10',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+            console.log('Created default category:', defaultCategory);
+            setCategories([defaultCategory]);
+            setSelectedCategory(defaultCategory);
           }
         } catch (error) {
           console.error('Error fetching categories:', error);

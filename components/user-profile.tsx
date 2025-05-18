@@ -40,7 +40,7 @@ export function UserProfile() {
     }
     return userName
       .split(" ")
-      .map((n) => n[0])
+      .map((n: string) => n[0])
       .join("")
       .toUpperCase()
       .substring(0, 2)

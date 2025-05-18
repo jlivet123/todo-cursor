@@ -32,8 +32,8 @@ interface Task {
   timeDisplay?: string
   description?: string
   // Date fields in ISO format (YYYY-MM-DD)
-  startDate: string
-  dueDate: string
+  startDate?: string
+  dueDate?: string
   position?: number
   // Completion tracking
   completionDate?: string           // ISO format (YYYY-MM-DD)
