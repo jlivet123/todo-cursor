@@ -986,9 +986,6 @@ export function getCurrentUserId(): string | null {
 export function saveStickyNoteToLocalStorage(note: Partial<StickyNote>): StickyNote | null {
   if (!isBrowser()) return null;
   
-  console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
-  console.log('User ID:', userId);
-  
   try {
     // Try to get user ID from the note first, then from auth
     let userId = note.user_id || getCurrentUserId();
@@ -1158,10 +1155,7 @@ export async function getStickyNotes(userId: string): Promise<StickyNote[]> {
     
     // Also save to local storage as fallback
     if (isBrowser()) {
-      console.log('Starting saveStickyNote with note:', JSON.stringify(note, null, 2));
-  console.log('User ID:', userId);
-  
-  try {
+      try {
         localStorage.setItem(`${STICKY_NOTES_KEY}_${userId}`, JSON.stringify(notes));
       } catch (e) {
         console.error('Error saving notes to localStorage:', e);
