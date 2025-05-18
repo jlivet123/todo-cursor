@@ -775,7 +775,7 @@ function CategoryColumn({
     <div
       className={cn(
         "flex flex-col h-full transition-all duration-300 ease-in-out",
-        isCollapsed ? "min-w-[50px] max-w-[50px]" : "min-w-[420px] flex-1 p-4"
+        isCollapsed ? "min-w-[50px] max-w-[50px]" : "min-w-[320px] flex-1 p-4"
       )}
     >
       <div className={cn("flex justify-between items-center", isCollapsed ? "p-2" : "mb-4")}>
