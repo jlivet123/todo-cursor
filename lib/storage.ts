@@ -347,16 +347,6 @@ export async function saveTask(task: Task): Promise<Task | null> {
       taskData.id = task.id;
     }
 
-    // Debugging log for taskData
-    console.log(`Saving task to Supabase: ${task.text} (ID: ${task.id}) with data:`, taskData);
-
-    // Insert or update task
-    console.log('Task data being saved to Supabase:', {
-      ...taskData,
-      // Don't log the entire user_id for security
-      user_id: taskData.user_id ? '***' : 'undefined'
-    });
-    
     if (!supabase) {
       throw new Error('Supabase client is not available');
     }

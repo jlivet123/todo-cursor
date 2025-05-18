@@ -11,38 +11,6 @@ import React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { format, isToday, isWeekend, isBefore, isSameDay } from "date-fns"
 
-// Find tasks with a specific position for debugging
-function findMissingTask(days: { date: Date; tasks: Task[]; isPast: boolean }[], targetPosition = 0) {
-  console.group("Searching for missing task with position " + targetPosition);
-  
-  const today = getLocalToday();
-  
-  days.forEach((day, dayIndex) => {
-    const isTodayColumn = isSameLocalDay(day.date, today);
-    
-    day.tasks.forEach(task => {
-      if (task.position === targetPosition) {
-        console.log(`Found position ${targetPosition} task:`, {
-          id: task.id,
-          text: task.text,
-          completed: task.completed,
-          startDate: task.startDate,
-          dueDate: task.dueDate,
-          category: task.category,
-          isOverdue: isTaskOverdue(task, today),
-          isTodo: isTaskTodo(task, day.date, today, day.isPast),
-          isCompleted: isTaskCompleted(task, day.date),
-          isTodayColumn: isTodayColumn,
-          dayIndex: dayIndex,
-          dayDate: format(day.date, "yyyy-MM-dd")
-        });
-      }
-    });
-  });
-  
-  console.groupEnd();
-}
-
 // Debug task information for a specific day
 function displayTaskDebug(dayIndex: number, days: { date: Date; tasks: Task[]; isPast: boolean }[]) {
   if (!days[dayIndex]) return;
@@ -61,14 +29,6 @@ function displayTaskDebug(dayIndex: number, days: { date: Date; tasks: Task[]; i
     if (isTaskOverdue(task, today)) taskState.push('Overdue');
     if (isTaskTodo(task, currentDay, today, day.isPast)) taskState.push('Todo');
     if (isTaskCompleted(task, currentDay)) taskState.push('CompletedToday');
-    
-    console.log(`Task: ${task.text} (${task.id})`, {
-      category: task.category,
-      state: taskState.join(', '),
-      startDate: task.startDate,
-      dueDate: task.dueDate,
-      completionDate: task.completionDate,
-    });
   });
   
   console.groupEnd();
@@ -1191,20 +1151,9 @@ export default function Tasks() {
   
   // Enhanced refresh function with debug logging
   const refreshTasks = async () => {
-    console.log("Starting task refresh...");
-    await originalRefreshTasks();
-    console.log("Task refresh complete. Current tasks count:", days.length > 0 ? 
-      days.reduce((count, day) => count + day.tasks.length, 0) : 0);
+
   };
 
-  // Debug: Track tasks with position 0
-  useEffect(() => {
-    if (days.length > 0) {
-      console.log('Checking for tasks with position 0...');
-      findMissingTask(days, 0);
-    }
-  }, [days]);
-  
   // Wrapper for updateTask to ensure consistent error handling and parameter format
   const updateTask = async (taskOrId: string | Task, updates?: Partial<Task>) => {
     try {
@@ -1223,8 +1172,6 @@ export default function Tasks() {
         taskUpdates = { ...task };
         delete taskUpdates.id; // Remove id from updates to prevent issues
       }
-      
-      console.log(`Updating task ${taskId} with:`, taskUpdates);
       
       const result = await updateTaskFromHook(taskId, taskUpdates);
       
@@ -1305,16 +1252,6 @@ export default function Tasks() {
         toColumnType: "personal" | "work",
         taskId?: string
       ) => Promise<Task | null>;
-      
-      console.log('Moving task with params:', {
-        dragIndex,
-        hoverIndex,
-        fromDayIndex,
-        toDayIndex,
-        fromColumnType,
-        toColumnType,
-        taskId
-      });
       
       // Call the function from the hook
       const result = await moveTaskFn(
@@ -1496,12 +1433,10 @@ export default function Tasks() {
       taskToUpdate.completionDate = format(today, "yyyy-MM-dd")
       taskToUpdate.completionDateMMMD = format(today, "MMM d")
       
-      console.log(`Task "${taskToUpdate.text}" marked as completed on ${taskToUpdate.completionDate}`)
     } else {
       // If uncompleting, clear both date formats
       taskToUpdate.completionDate = undefined
       taskToUpdate.completionDateMMMD = undefined
-      console.log(`Task "${taskToUpdate.text}" marked as incomplete`)
     }
     
     // Update the task in the database
@@ -1544,16 +1479,12 @@ export default function Tasks() {
       // Show loading notification
       showNotification("Creating task...", "info");
       
-      console.log(`Creating new task: "${text}" for day ${dayIndex}, category ${columnType}`);
-      
       // Use the createTask function from the hook which handles saving and UI updates
       const savedTask = await createTask(text.trim(), dayIndex, columnType);
       
       if (!savedTask) {
         throw new Error("Failed to create task");
       }
-      
-      console.log("Task created successfully:", savedTask);
       
       // Manual localStorage backup to ensure the task is persisted
       const storageKey = isSupabaseConfigured() ? "supabase-tasks" : "tasks";
@@ -1563,7 +1494,6 @@ export default function Tasks() {
       if (!taskExists) {
         storedTasks.push(savedTask);
         localStorage.setItem(storageKey, JSON.stringify(storedTasks));
-        console.log("Task manually backed up to localStorage");
       }
       
       // Clear the input

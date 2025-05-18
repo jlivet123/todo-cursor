@@ -88,54 +88,12 @@ export function useTasks() {
     const today = getLocalToday();
     const newDays: DayWithTasks[] = [];
     
-    console.log('[DEBUG] ===== STARTING TASK PROCESSING =====');
-    console.log(`[DEBUG] Processing ${tasks.length} tasks`);
-    console.log(`[DEBUG] Today is: ${format(today, 'yyyy-MM-dd')}`);
-    
-    // Log all tasks with their complete state before any processing
-    console.group('[DEBUG] === TASK DUMP (BEFORE PROCESSING) ===');
-    console.log('Task ID'.padEnd(40), 'Text'.padEnd(30), 'Pos'.padEnd(4), 'Comp'.padEnd(5), 'Start Date'.padEnd(12), 'Due Date'.padEnd(12), 'Comp Date'.padEnd(12), 'Category');
-    console.log('-'.repeat(140));
-    
-    tasks.forEach((task, index) => {
-      console.log(
-        `${task.id}`.padEnd(40),
-        `${task.text.substring(0, 28)}${task.text.length > 28 ? '...' : ''}`.padEnd(30),
-        `${task.position}`.padEnd(4),
-        `${task.completed ? '✓' : '✗'}`.padEnd(5),
-        `${task.startDate || 'N/A'}`.padEnd(12),
-        `${task.dueDate || 'N/A'}`.padEnd(12),
-        `${task.completionDate || 'N/A'}`.padEnd(12),
-        task.category || 'N/A'
-      );
-    });
-    console.groupEnd();
-    
-    // Log tasks with position 0 for debugging
-    console.group('[DEBUG] === TASKS WITH POSITION 0 ===');
+    // Filter tasks with position 0 (kept for potential future use)
     const positionZeroTasks = tasks.filter(t => t.position === 0);
-    if (positionZeroTasks.length === 0) {
-      console.log('No tasks with position 0 found');
-    } else {
-      console.log(`Found ${positionZeroTasks.length} tasks with position 0:`);
-      positionZeroTasks.forEach((task, index) => {
-        console.log(`\n[${index + 1}] Task ID: ${task.id}`);
-        console.log(`   Text: ${task.text}`);
-        console.log(`   Completed: ${task.completed}`);
-        console.log(`   Start Date: ${task.startDate || 'Not set'}`);
-        console.log(`   Due Date: ${task.dueDate || 'Not set'}`);
-        console.log(`   Completion Date: ${task.completionDate || 'Not completed'}`);
-        console.log(`   Category: ${task.category || 'Not set'}`);
-      });
-    }
-    console.groupEnd();
     
     // Create 7 days (today + 6 days)
     for (let i = 0; i < 7; i++) {
       const currentDate = addDays(today, i);
-      const currentDateStr = format(currentDate, 'yyyy-MM-dd');
-      
-      console.group(`[DEBUG] Processing day ${i} (${currentDateStr})`);
       
       // Filter tasks for this day
       const dayTasks = tasks.filter(task => {
@@ -158,7 +116,6 @@ export function useTasks() {
             taskInfo.included = true;
             taskInfo.reason = 'Completed task matching completion date';
           }
-          console.log(`Task ${task.id} (${task.text}): ${isMatch ? 'INCLUDED - ' + taskInfo.reason : 'EXCLUDED - Completed but no match'}`);
           return isMatch;
         }
         
@@ -168,36 +125,29 @@ export function useTasks() {
           if (!task.startDate) {
             taskInfo.included = true;
             taskInfo.reason = 'No start date';
-            console.log(`Task ${task.id} (${task.text}): INCLUDED - ${taskInfo.reason}`);
             return true;
           }
           
           // Show tasks with start_date <= today
           const startDate = createLocalDate(task.startDate);
-          const shouldShow = startDate && startDate <= today;
+          const shouldShow = !!(startDate && startDate <= today);
           taskInfo.included = shouldShow;
           taskInfo.reason = shouldShow ? `Start date (${task.startDate}) <= today` : `Start date (${task.startDate}) is in future`;
-          console.log(`Task ${task.id} (${task.text}): ${shouldShow ? 'INCLUDED' : 'EXCLUDED'} - ${taskInfo.reason}`);
           return shouldShow;
         }
         
         // For future days (i > 0)
         if (!task.completed && task.startDate) {
           const startDate = createLocalDate(task.startDate);
-          const isMatch = startDate && isSameLocalDay(startDate, currentDate);
+          const isMatch = !!(startDate && isSameLocalDay(startDate, currentDate));
           taskInfo.included = isMatch;
           taskInfo.reason = isMatch ? `Start date matches day ${i}` : `Start date doesn't match day ${i}`;
-          console.log(`Task ${task.id} (${task.text}): ${isMatch ? 'INCLUDED' : 'EXCLUDED'} - ${taskInfo.reason}`);
           return isMatch;
         }
         
-        console.log(`Task ${task.id} (${task.text}): EXCLUDED - No matching conditions`);
         return false;
       });
-      
-      console.log(`[DEBUG] Day ${i} (${currentDateStr}) has ${dayTasks.length} tasks`);
-      console.groupEnd();
-      
+           
       newDays.push({
         date: currentDate,
         tasks: dayTasks,
