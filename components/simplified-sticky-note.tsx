@@ -25,7 +25,8 @@ export function SimplifiedStickyNote({ note, onDelete, onUpdate, onCategoryChang
 
   const handleSave = () => {
     if (editedContent.trim() !== "") {
-      onUpdate(note.id, editedContent, note.category)
+      // Pass the category_id instead of the category name
+      onUpdate(note.id, editedContent, note.category_id || undefined)
       setIsEditing(false)
     }
   }
