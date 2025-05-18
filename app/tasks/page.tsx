@@ -774,8 +774,10 @@ function CategoryColumn({
   return (
     <div
       className={cn(
-        "flex flex-col h-full transition-all duration-300 ease-in-out",
-        isCollapsed ? "min-w-[50px] max-w-[50px]" : "min-w-[320px] flex-1 p-4"
+        "flex flex-col h-full transition-all duration-300 ease-in-out w-full",
+        isCollapsed 
+          ? "min-w-[50px] max-w-[50px]" 
+          : "min-w-[280px] sm:min-w-[320px] flex-1 p-2 sm:p-4"
       )}
     >
       <div className={cn("flex justify-between items-center", isCollapsed ? "p-2" : "mb-4")}>
@@ -1080,7 +1082,7 @@ function DayColumn({
         </div>
       </div>
 
-      <div className="flex h-[calc(100vh-170px)] overflow-hidden">
+      <div className="flex flex-col sm:flex-row h-[calc(100vh-170px)] overflow-auto w-full gap-2 sm:gap-4">
         <CategoryColumn
           title="Personal"
           columnType="personal"
@@ -1711,7 +1713,7 @@ export default function Tasks() {
           </div>
         ) : (
           <DndProvider backend={HTML5Backend} options={{ enableMouseEvents: true, enableTouchEvents: true }}>
-            <div className="flex overflow-x-auto overflow-y-hidden h-[calc(100vh-120px)]">
+            <div className="flex overflow-x-auto overflow-y-hidden h-[calc(100vh-120px)] w-full px-2 sm:px-4">
               {visibleDays.map((day, dayIndex) => (
                 <DayColumn
                   key={format(day.date, "yyyy-MM-dd")}
