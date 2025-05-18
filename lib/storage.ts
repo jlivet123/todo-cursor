@@ -327,8 +327,7 @@ export async function saveTask(task: Task): Promise<Task | null> {
     };
 
     // Prepare task data for Supabase - only include fields that exist in the database
-    const taskData = {
-      id: task.id,
+    const taskData: any = {
       text: task.text,
       completed: task.completed,
       category: task.category,
@@ -341,13 +340,22 @@ export async function saveTask(task: Task): Promise<Task | null> {
       completion_date: formatDateForDatabase(task.completionDate),
       // Don't include completion_date_mmmd as it doesn't exist in the database
       user_id: userId,
+    };
+    
+    // Only include the ID if it's an update (not a temp ID)
+    if (task.id && !task.id.startsWith('temp-')) {
+      taskData.id = task.id;
     }
 
     // Debugging log for taskData
     console.log(`Saving task to Supabase: ${task.text} (ID: ${task.id}) with data:`, taskData);
 
     // Insert or update task
-    console.log('Task data being saved:', JSON.stringify(taskData, null, 2));
+    console.log('Task data being saved to Supabase:', {
+      ...taskData,
+      // Don't log the entire user_id for security
+      user_id: taskData.user_id ? '***' : 'undefined'
+    });
     
     if (!supabase) {
       throw new Error('Supabase client is not available');
@@ -366,29 +374,42 @@ export async function saveTask(task: Task): Promise<Task | null> {
           code: error.code,
           details: error.details,
           hint: error.hint,
+          error: error,
+          taskData: JSON.stringify(taskData, null, 2)
         });
-        throw error;
+        console.error('Full error object:', error);
+        console.error('Task data being saved:', taskData);
+        throw new Error(`Failed to save task: ${error.message}`, { cause: error });
       }
       
       // Map the returned data from Supabase to our Task object
       const savedTask: Task = {
-        ...task,
-        id: data.id,
-        text: data.text,
-        completed: data.completed,
-        category: data.category,
-        time: data.time,
-        timeDisplay: data.time_display,
-        description: data.description,
-        startDate: data.start_date,
-        dueDate: data.due_date,
-        position: data.position,
-        completionDate: data.completion_date,
-        completionDateMMMD: data.completion_date_mmmd,
+        ...task, // This will be overridden by the following fields
+        id: data.id, // Use the ID from the database
+        text: data.text || task.text,
+        completed: data.completed || false,
+        category: data.category || task.category,
+        time: data.time || task.time,
+        timeDisplay: data.time_display || task.timeDisplay,
+        description: data.description || task.description,
+        startDate: data.start_date || task.startDate || '',
+        dueDate: data.due_date || task.dueDate || '',
+        position: data.position || task.position || 0,
+        completionDate: data.completion_date || task.completionDate,
+        // Generate MMMD format from completion_date if it exists
+        completionDateMMMD: data.completion_date 
+          ? format(new Date(data.completion_date + 'T00:00:00'), 'MMM d')
+          : task.completionDateMMMD,
         subtasks: task.subtasks || [],
-        startDateObj: data.start_date ? new Date(data.start_date) : null,
-        dueDateObj: data.due_date ? new Date(data.due_date) : null,
-        completionDateObj: data.completion_date ? new Date(data.completion_date) : null
+        startDateObj: data.start_date 
+          ? new Date(data.start_date) 
+          : (task.startDate ? new Date(task.startDate) : null),
+        dueDateObj: data.due_date 
+          ? new Date(data.due_date) 
+          : (task.dueDate ? new Date(task.dueDate) : null),
+        completionDateObj: data.completion_date 
+          ? new Date(data.completion_date) 
+          : (task.completionDate ? new Date(task.completionDate) : null)
       };
       
       console.log(`Task saved to Supabase: ${savedTask.text} (ID: ${savedTask.id})`);
