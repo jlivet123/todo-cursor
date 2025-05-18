@@ -1066,10 +1066,16 @@ function DayColumn({
     <div
       className={cn(
         "flex-shrink-0 border-l border-slate-700 last:border-r transition-all duration-300 ease-in-out",
-        isPersonalCollapsed && isWorkCollapsed ? "w-[120px]" : "w-[920px]",
         isToday(day.date) && "bg-slate-900/50",
         isWeekendDay && "bg-slate-800/20",
       )}
+      style={{
+        width: isPersonalCollapsed && isWorkCollapsed 
+          ? '120px' 
+          : isPersonalCollapsed || isWorkCollapsed 
+            ? 'calc(460px + 8px)' // Half width + gap
+            : '920px' // Full width
+      }}
     >
       <div className="px-4 py-3 bg-slate-900/50 border-b border-slate-700 sticky top-0 z-10">
         <div className="text-sm font-medium">
@@ -1081,7 +1087,7 @@ function DayColumn({
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row h-[calc(100vh-170px)] overflow-auto w-full gap-2 sm:gap-4">
+      <div className="flex flex-row h-[calc(100vh-170px)] overflow-auto w-full gap-2 sm:gap-4">
         <CategoryColumn
           title="Personal"
           columnType="personal"
