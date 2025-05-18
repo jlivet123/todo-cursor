@@ -1,7 +1,7 @@
 "use client"
 
 import React, { ReactNode } from "react"
-import { NavigationSidebar } from "./navigation-sidebar"
+import { NavigationSidebarSafe } from "./navigation-sidebar-safe"
 import { usePathname } from "next/navigation"
 
 interface PageLayoutProps {
@@ -24,7 +24,7 @@ export function PageLayout({
   return (
     <div className="flex h-screen bg-slate-900 text-white">
       {/* Navigation Sidebar - Only pass column control functions when on task list page */}
-      <NavigationSidebar 
+      <NavigationSidebarSafe 
         isTaskListPage={isTaskListPage}
         collapseAllColumnsOfType={isTaskListPage ? collapseAllColumnsOfType : undefined}
         expandAllColumnsOfType={isTaskListPage ? expandAllColumnsOfType : undefined}
