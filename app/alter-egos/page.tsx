@@ -8,26 +8,49 @@ import { AlterEgoCard } from "@/components/alter-ego-card"
 import { CategoryTabs } from "@/components/category-tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlterEgoForm } from "@/components/alter-ego-form"
-import { getAlterEgos, getCategories } from "@/lib/alter-ego-storage"
-import type { AlterEgo, AlterEgoCategory } from "@/lib/types"
+import { getAlterEgos } from "@/lib/alter-ego-storage"
+import type { AlterEgo, AlterEgoCategory, AlterEgoWithCategories } from "@/lib/types"
 import { HelperText } from "@/components/helper-text"
+import { MOCK_USER } from "@/lib/storage"
+import { 
+  ensureDefaultAlterEgoCategories,
+  fetchAlterEgoCategories,
+  createAlterEgoCategory,
+  updateAlterEgoCategoryPositions,
+  deleteAlterEgoCategory
+} from "@/lib/database/alterEgoCategories"
 
 export default function AlterEgosPage() {
-  const [alterEgos, setAlterEgos] = useState<AlterEgo[]>([])
+  const [alterEgos, setAlterEgos] = useState<AlterEgoWithCategories[]>([])
   const [categories, setCategories] = useState<AlterEgoCategory[]>([])
   const [activeCategory, setActiveCategory] = useState<string>("all")
   const [isAddingAlterEgo, setIsAddingAlterEgo] = useState(false)
 
+  // Get the current user ID (using mock user for now)
+  const userId = MOCK_USER.id
+
   useEffect(() => {
-    // Load alter egos and categories from storage
-    const loadedAlterEgos = getAlterEgos()
-    const loadedCategories = getCategories()
+    if (!userId) return
 
-    setAlterEgos(loadedAlterEgos)
-    setCategories(loadedCategories)
-  }, [])
+    const loadData = async () => {
+      try {
+        // 1. Ensure default categories exist in DB
+        await ensureDefaultAlterEgoCategories(userId)
+        // 2. Fetch categories from Supabase
+        const categoriesFromDB = await fetchAlterEgoCategories(userId)
+        setCategories(categoriesFromDB)
+        // 3. Load alter egos from local storage for now
+        const loadedAlterEgos = getAlterEgos()
+        setAlterEgos(loadedAlterEgos)
+      } catch (error) {
+        console.error('Error loading alter ego data:', error)
+      }
+    }
 
-  const handleAddAlterEgo = (newAlterEgo: AlterEgo) => {
+    loadData()
+  }, [userId])
+
+  const handleAddAlterEgo = (newAlterEgo: AlterEgoWithCategories) => {
     setAlterEgos([...alterEgos, newAlterEgo])
     setIsAddingAlterEgo(false)
   }
@@ -36,30 +59,52 @@ export default function AlterEgosPage() {
     setAlterEgos(alterEgos.filter((ego) => ego.id !== id))
   }
 
-  const handleUpdateAlterEgo = (updatedAlterEgo: AlterEgo) => {
+  const handleUpdateAlterEgo = (updatedAlterEgo: AlterEgoWithCategories) => {
     setAlterEgos(alterEgos.map((ego) => (ego.id === updatedAlterEgo.id ? updatedAlterEgo : ego)))
   }
 
-  const handleAddCategory = (newCategory: AlterEgoCategory) => {
-    setCategories([...categories, newCategory])
+  const handleAddCategory = async (newCategory: AlterEgoCategory) => {
+    try {
+      const savedCategory = await createAlterEgoCategory(userId, newCategory.name)
+      if (savedCategory) {
+        setCategories([...categories, savedCategory])
+      }
+    } catch (error) {
+      console.error('Error adding category:', error)
+    }
   }
 
-  const handleDeleteCategory = (categoryId: string) => {
-    setCategories(categories.filter((category) => category.id !== categoryId))
+  const handleDeleteCategory = async (categoryId: string) => {
+    try {
+      const result = await deleteAlterEgoCategory(userId, categoryId)
+      if (result.success) {
+        setCategories(categories.filter((category) => category.id !== categoryId))
+      } else if (result.error) {
+        // TODO: Show error message to user
+        console.error('Cannot delete category:', result.error)
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error)
+    }
   }
 
-  const handleCategoriesReordered = (reorderedCategories: AlterEgoCategory[]) => {
-    setCategories(reorderedCategories)
+  const handleCategoriesReordered = async (reorderedCategories: AlterEgoCategory[]) => {
+    try {
+      // Update UI immediately for responsiveness
+      setCategories(reorderedCategories)
+      // Then update in database
+      await updateAlterEgoCategoryPositions(userId, reorderedCategories.map(c => c.id))
+    } catch (error) {
+      console.error('Error reordering categories:', error)
+      // TODO: Revert UI state on error
+    }
   }
 
   // Filter alter egos based on active category
-  const filteredAlterEgos =
-    activeCategory === "all"
-      ? alterEgos
-      : alterEgos.filter((ego) => {
-          // Check if the alter ego has categories and if the active category is in them
-          return ego.categories && ego.categories.some((category) => category.id === activeCategory)
-        })
+  const filteredAlterEgos = alterEgos.filter((ego) => {
+    if (activeCategory === "all") return true
+    return ego.categories.some((category) => category.id === activeCategory)
+  })
 
   return (
     <AppLayout>
@@ -78,6 +123,7 @@ export default function AlterEgosPage() {
         <CategoryTabs
           categories={categories}
           activeCategory={activeCategory}
+          userId={userId}
           onCategoryChange={setActiveCategory}
           onCategoryAdded={handleAddCategory}
           onCategoryDeleted={handleDeleteCategory}
@@ -106,9 +152,15 @@ export default function AlterEgosPage() {
               <DialogTitle>Add New Alter Ego</DialogTitle>
             </DialogHeader>
             <AlterEgoForm
-              onSave={handleAddAlterEgo}
-              categories={categories}
-              initialCategory={activeCategory !== "all" ? activeCategory : undefined}
+              onSave={(newAlterEgo) => {
+                // Convert AlterEgo to AlterEgoWithCategories
+                const selectedCategory = activeCategory !== "all" ? categories.find(c => c.id === activeCategory) : undefined
+                handleAddAlterEgo({
+                  ...newAlterEgo,
+                  categories: selectedCategory ? [selectedCategory] : []
+                })
+              }}
+              initialCategoryId={activeCategory !== "all" ? activeCategory : undefined}
             />
           </DialogContent>
         </Dialog>

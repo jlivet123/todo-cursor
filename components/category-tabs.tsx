@@ -5,15 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { PlusCircle, Settings } from "lucide-react"
-import { v4 as uuidv4 } from "uuid"
-import { saveCategory } from "@/lib/alter-ego-storage"
 import { CategoryManagementModal } from "./category-management-modal"
 import type { AlterEgoCategory } from "@/lib/types"
-import { MOCK_USER_ID } from "@/lib/alter-ego-storage"
+import { createAlterEgoCategory } from "@/lib/database/alterEgoCategories"
 
 interface CategoryTabsProps {
   categories: AlterEgoCategory[]
   activeCategory: string
+  userId: string
   onCategoryChange: (categoryId: string) => void
   onCategoryAdded?: (category: AlterEgoCategory) => void
   onCategoryDeleted?: (categoryId: string) => void
@@ -23,6 +22,7 @@ interface CategoryTabsProps {
 export function CategoryTabs({
   categories,
   activeCategory,
+  userId,
   onCategoryChange,
   onCategoryAdded,
   onCategoryDeleted,
@@ -38,25 +38,24 @@ export function CategoryTabs({
     setSortedCategories([...categories].sort((a, b) => a.position - b.position))
   }, [categories])
 
-  const handleAddCategory = () => {
-    if (newCategoryName.trim()) {
-      const newCategory: AlterEgoCategory = {
-        id: uuidv4(),
-        name: newCategoryName.trim(),
-        description: null,
-        position: categories.length, // Add to the end
-        created_at: new Date().toISOString(),
-        user_id: MOCK_USER_ID,
-      }
+  const handleAddCategory = async () => {
+    const trimmedName = newCategoryName.trim()
+    if (!trimmedName) return
 
-      saveCategory(newCategory)
-      setNewCategoryName("")
-      setIsAddingCategory(false)
+    try {
+      const newCategory = await createAlterEgoCategory(userId, trimmedName)
+      if (newCategory) {
+        setNewCategoryName("")
+        setIsAddingCategory(false)
 
-      // Update the local state through the parent component
-      if (onCategoryAdded) {
-        onCategoryAdded(newCategory)
+        // Update the local state through the parent component
+        if (onCategoryAdded) {
+          onCategoryAdded(newCategory)
+        }
       }
+    } catch (error) {
+      console.error('Error creating category:', error)
+      // TODO: Show error message to user
     }
   }
 
@@ -129,6 +128,7 @@ export function CategoryTabs({
         open={isManagingCategories}
         onOpenChange={setIsManagingCategories}
         categories={sortedCategories}
+        userId={userId}
         onCategoryDeleted={handleCategoryDeleted}
         onCategoriesReordered={handleCategoriesReordered}
       />

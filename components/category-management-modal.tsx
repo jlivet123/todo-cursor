@@ -4,7 +4,8 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Trash2, AlertCircle, GripVertical } from "lucide-react"
-import { deleteCategory, categoryHasAlterEgos, updateCategoryPositions } from "@/lib/alter-ego-storage"
+
+import { deleteAlterEgoCategory, updateAlterEgoCategoryPositions } from "@/lib/database/alterEgoCategories"
 import type { AlterEgoCategory } from "@/lib/types"
 import {
   DndContext,
@@ -28,6 +29,7 @@ interface CategoryManagementModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   categories: AlterEgoCategory[]
+  userId: string
   onCategoryDeleted: (categoryId: string) => void
   onCategoriesReordered: (categories: AlterEgoCategory[]) => void
 }
@@ -90,6 +92,7 @@ export function CategoryManagementModal({
   open,
   onOpenChange,
   categories,
+  userId,
   onCategoryDeleted,
   onCategoriesReordered,
 }: CategoryManagementModalProps) {
@@ -118,37 +121,42 @@ export function CategoryManagementModal({
     setDeleteError(null)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deletingCategory) return
 
-    // Check if the category is "All" - cannot delete this one
+    // Don't allow deleting "All" category
     if (deletingCategory.id === "all") {
       setDeleteError("The 'All' category cannot be deleted.")
       return
     }
 
-    // Check if the category has any alter egos
-    if (categoryHasAlterEgos(deletingCategory.id)) {
-      setDeleteError(
-        "Cannot delete a category that contains alter egos. Please remove all alter egos from this category first.",
-      )
-      return
+    try {
+      // Delete category in Supabase
+      const result = await deleteAlterEgoCategory(userId, deletingCategory.id)
+      
+      if (result.success) {
+        // Update local state
+        setItems(items.filter((item) => item.id !== deletingCategory.id))
+
+        // Notify parent component
+        onCategoryDeleted(deletingCategory.id)
+
+        // Close the dialog
+        setDeletingCategory(null)
+      } else if (result.error) {
+        // Improve error message for specific cases
+        const errorMessage = result.error === "has_alter_egos" 
+          ? "Cannot delete a category that contains alter egos. Please remove all alter egos from this category first."
+          : result.error
+        setDeleteError(errorMessage)
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error)
+      setDeleteError('An error occurred while deleting the category. Please try again later.')
     }
-
-    // Delete the category
-    deleteCategory(deletingCategory.id)
-
-    // Notify parent component
-    onCategoryDeleted(deletingCategory.id)
-
-    // Update local state
-    setItems(items.filter((item) => item.id !== deletingCategory.id))
-
-    // Close the dialog
-    setDeletingCategory(null)
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
 
     if (over && active.id !== over.id) {
@@ -164,19 +172,27 @@ export function CategoryManagementModal({
         position: index,
       }))
 
-      // Update local state
-      setItems(updatedItems)
+      try {
+        // Update local state immediately for responsiveness
+        setItems(updatedItems)
 
-      // Update storage
-      updateCategoryPositions(updatedItems.map((item) => item.id))
+        // Update positions in Supabase
+        await updateAlterEgoCategoryPositions(userId, updatedItems.map((item) => item.id))
 
-      // Notify parent component
-      onCategoriesReordered(updatedItems)
+        // Notify parent component
+        onCategoriesReordered(updatedItems)
+      } catch (error) {
+        console.error('Error updating category positions:', error)
+        // TODO: Show error message to user
+        // Revert local state on error
+        setItems(items)
+      }
     }
   }
 
   return (
     <>
+      {/* Category Management Dialog */}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -201,25 +217,31 @@ export function CategoryManagementModal({
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deletingCategory} onOpenChange={(open) => !open && setDeletingCategory(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Category</DialogTitle>
           </DialogHeader>
-          {deleteError ? (
-            <div className="bg-destructive/10 p-3 rounded-md flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-              <p className="text-destructive">{deleteError}</p>
-            </div>
-          ) : (
+          <div className="space-y-4">
             <p>
-              Are you sure you want to delete the category "{deletingCategory?.name}"? This action cannot be undone.
+              Are you sure you want to delete &quot;{deletingCategory?.name}&quot;? This action cannot be undone.
             </p>
-          )}
+            {deletingCategory?.id !== "all" && (
+              <p className="text-sm text-muted-foreground">
+                Note: You cannot delete a category that contains alter egos. Please remove all alter egos from this category first.
+              </p>
+            )}
+            {deleteError && (
+              <div className="flex items-center gap-2 text-destructive text-sm">
+                <AlertCircle className="h-4 w-4" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingCategory(null)}>
+            <Button variant="ghost" onClick={() => setDeletingCategory(null)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleConfirmDelete} disabled={!!deleteError}>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
               Delete
             </Button>
           </DialogFooter>
