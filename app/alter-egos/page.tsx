@@ -11,7 +11,7 @@ import { AlterEgoForm } from "@/components/alter-ego-form"
 import { getAlterEgos } from "@/lib/alter-ego-storage"
 import type { AlterEgo, AlterEgoCategory, AlterEgoWithCategories } from "@/lib/types"
 import { HelperText } from "@/components/helper-text"
-import { MOCK_USER } from "@/lib/storage"
+import { getSupabaseClient } from "@/lib/supabase"
 import { 
   ensureDefaultAlterEgoCategories,
   fetchAlterEgoCategories,
@@ -26,8 +26,31 @@ export default function AlterEgosPage() {
   const [activeCategory, setActiveCategory] = useState<string>("all")
   const [isAddingAlterEgo, setIsAddingAlterEgo] = useState(false)
 
-  // Get the current user ID (using mock user for now)
-  const userId = MOCK_USER.id
+  // Get the current user ID from Supabase
+  const [userId, setUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const initUser = async () => {
+      const supabase = getSupabaseClient()
+      if (!supabase) {
+        console.error('Supabase client not initialized')
+        return
+      }
+
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser()
+        if (error) throw error
+        if (!user) throw new Error('No authenticated user found')
+        
+        setUserId(user.id)
+      } catch (error) {
+        console.error('Error getting user:', error)
+        setUserId(null)
+      }
+    }
+
+    initUser()
+  }, [])
 
   useEffect(() => {
     if (!userId) return
@@ -40,7 +63,7 @@ export default function AlterEgosPage() {
         const categoriesFromDB = await fetchAlterEgoCategories(userId)
         setCategories(categoriesFromDB)
         // 3. Load alter egos from local storage for now
-        const loadedAlterEgos = getAlterEgos()
+        const loadedAlterEgos = getAlterEgos(userId)
         setAlterEgos(loadedAlterEgos)
       } catch (error) {
         console.error('Error loading alter ego data:', error)
@@ -50,8 +73,23 @@ export default function AlterEgosPage() {
     loadData()
   }, [userId])
 
+  const handleCategoryAdded = (newCategory: AlterEgoCategory) => {
+    setCategories(prev => [...prev, newCategory])
+  }
+
+  const handleCategoryDeleted = (categoryId: string) => {
+    setCategories(prev => prev.filter(c => c.id !== categoryId))
+  }
+
+  const handleCategoriesReordered = (reorderedCategories: AlterEgoCategory[]) => {
+    setCategories(reorderedCategories)
+    if (userId) {
+      updateAlterEgoCategoryPositions(userId, reorderedCategories.map(c => c.id))
+    }
+  }
+
   const handleAddAlterEgo = (newAlterEgo: AlterEgoWithCategories) => {
-    setAlterEgos([...alterEgos, newAlterEgo])
+    setAlterEgos(prev => [...prev, newAlterEgo])
     setIsAddingAlterEgo(false)
   }
 
@@ -64,6 +102,11 @@ export default function AlterEgosPage() {
   }
 
   const handleAddCategory = async (newCategory: AlterEgoCategory) => {
+    if (!userId) {
+      console.error('No user ID available')
+      return
+    }
+
     try {
       const savedCategory = await createAlterEgoCategory(userId, newCategory.name)
       if (savedCategory) {
@@ -75,6 +118,11 @@ export default function AlterEgosPage() {
   }
 
   const handleDeleteCategory = async (categoryId: string) => {
+    if (!userId) {
+      console.error('No user ID available')
+      return
+    }
+
     try {
       const result = await deleteAlterEgoCategory(userId, categoryId)
       if (result.success) {
@@ -88,23 +136,23 @@ export default function AlterEgosPage() {
     }
   }
 
-  const handleCategoriesReordered = async (reorderedCategories: AlterEgoCategory[]) => {
-    try {
-      // Update UI immediately for responsiveness
-      setCategories(reorderedCategories)
-      // Then update in database
-      await updateAlterEgoCategoryPositions(userId, reorderedCategories.map(c => c.id))
-    } catch (error) {
-      console.error('Error reordering categories:', error)
-      // TODO: Revert UI state on error
-    }
-  }
-
   // Filter alter egos based on active category
   const filteredAlterEgos = alterEgos.filter((ego) => {
     if (activeCategory === "all") return true
     return ego.categories.some((category) => category.id === activeCategory)
   })
+
+  if (!userId) {
+    return (
+      <AppLayout>
+        <div className="container mx-auto py-8 px-4">
+          <div className="text-center py-10 text-muted-foreground">
+            Please sign in to manage your alter egos.
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
 
   return (
     <AppLayout>
@@ -125,8 +173,8 @@ export default function AlterEgosPage() {
           activeCategory={activeCategory}
           userId={userId}
           onCategoryChange={setActiveCategory}
-          onCategoryAdded={handleAddCategory}
-          onCategoryDeleted={handleDeleteCategory}
+          onCategoryAdded={handleCategoryAdded}
+          onCategoryDeleted={handleCategoryDeleted}
           onCategoriesReordered={handleCategoriesReordered}
         />
 

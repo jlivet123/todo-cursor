@@ -103,36 +103,36 @@ const DEFAULT_PROMPTS: SystemPrompt[] = [
 ]
 
 // Get all alter egos with their categories
-export function getAlterEgos(): AlterEgoWithCategories[] {
+export function getAlterEgos(userId: string): AlterEgoWithCategories[] {
   if (!isBrowser()) return []
 
   try {
-    const alterEgosJson = localStorage.getItem(ALTER_EGOS_KEY)
-    const alterEgos: AlterEgo[] = alterEgosJson ? JSON.parse(alterEgosJson) : []
+    // Get alter egos
+    const alterEgosStr = localStorage.getItem(ALTER_EGOS_KEY)
+    const alterEgos = (alterEgosStr ? JSON.parse(alterEgosStr) : [])
+      .filter((ego: AlterEgo) => ego.user_id === userId)
 
-    const alterEgoCategoryMappingsJson = localStorage.getItem(ALTER_EGO_CATEGORY_MAPPINGS_KEY)
-    const alterEgoCategoryMappings: AlterEgoCategoryMapping[] = alterEgoCategoryMappingsJson
-      ? JSON.parse(alterEgoCategoryMappingsJson)
-      : []
+    // Get category mappings
+    const mappingsStr = localStorage.getItem(ALTER_EGO_CATEGORY_MAPPINGS_KEY)
+    const mappings = mappingsStr ? JSON.parse(mappingsStr) : []
 
-    const categoriesJson = localStorage.getItem(ALTER_EGO_CATEGORIES_KEY)
-    const categories: AlterEgoCategory[] = categoriesJson ? JSON.parse(categoriesJson) : []
+    // Get categories
+    const categoriesStr = localStorage.getItem(ALTER_EGO_CATEGORIES_KEY)
+    const categories = (categoriesStr ? JSON.parse(categoriesStr) : [])
+      .filter((cat: AlterEgoCategory) => cat.user_id === userId)
 
-    // Join alter egos with their categories
-    return alterEgos.map((alterEgo) => {
-      const categoryMappings = alterEgoCategoryMappings.filter((mapping) => mapping.alter_ego_id === alterEgo.id)
-
-      const egoCategories = categoryMappings
-        .map((mapping) => categories.find((category) => category.id === mapping.category_id))
-        .filter((category): category is AlterEgoCategory => category !== undefined)
-
-      return {
-        ...alterEgo,
-        categories: egoCategories,
-      }
-    })
+    // Return alter egos with their categories
+    return alterEgos.map((ego: AlterEgo) => ({
+      ...ego,
+      categories: mappings
+        .filter((m: AlterEgoCategoryMapping) => m.alter_ego_id === ego.id)
+        .map((m: AlterEgoCategoryMapping) =>
+          categories.find((c: AlterEgoCategory) => c.id === m.category_id)
+        )
+        .filter(Boolean),
+    })) as AlterEgoWithCategories[]
   } catch (error) {
-    console.error("Error getting alter egos:", error)
+    console.error('Error getting alter egos:', error)
     return []
   }
 }

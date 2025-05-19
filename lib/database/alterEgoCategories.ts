@@ -106,7 +106,12 @@ export async function createAlterEgoCategory(
     .single();
 
   if (error) {
-    console.error('Error creating alter ego category:', error);
+    console.error('Error creating alter ego category:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code
+    });
     return null;
   }
 
