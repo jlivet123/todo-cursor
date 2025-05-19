@@ -106,12 +106,21 @@ export async function createAlterEgoCategory(
     .single();
 
   if (error) {
-    console.error('Error creating alter ego category:', {
+    // Log the full error object for debugging
+    console.error('Full Supabase error:', JSON.stringify(error, null, 2));
+    
+    // Log structured error info
+    const errorInfo = {
       message: error.message,
       details: error.details,
       hint: error.hint,
-      code: error.code
-    });
+      code: error.code,
+      name: error.name
+    };
+    console.error('Error creating alter ego category:', JSON.stringify(errorInfo, null, 2));
+
+    // Also log the category data we tried to insert
+    console.error('Category data that failed:', JSON.stringify(newCategory, null, 2));
     return null;
   }
 

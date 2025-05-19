@@ -40,11 +40,21 @@ export function CategoryTabs({
 
   const handleAddCategory = async () => {
     const trimmedName = newCategoryName.trim()
-    if (!trimmedName) return
+    if (!trimmedName) {
+      console.warn('Category name is empty')
+      return
+    }
 
     try {
+      console.log('Attempting to create category:', {
+        userId,
+        name: trimmedName
+      })
+
       const newCategory = await createAlterEgoCategory(userId, trimmedName)
+      
       if (newCategory) {
+        console.log('Successfully created category:', newCategory)
         setNewCategoryName("")
         setIsAddingCategory(false)
 
@@ -52,9 +62,16 @@ export function CategoryTabs({
         if (onCategoryAdded) {
           onCategoryAdded(newCategory)
         }
+      } else {
+        console.error('Failed to create category: createAlterEgoCategory returned null')
       }
     } catch (error) {
-      console.error('Error creating category:', error)
+      console.error('Error creating category:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        userId,
+        categoryName: trimmedName
+      })
       // TODO: Show error message to user
     }
   }
