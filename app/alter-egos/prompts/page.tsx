@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 
 import { useState, useEffect } from "react"
-import { AppLayout } from "@/components/app-layout"
+import { PageLayout } from "@/components/page-layout"
 import { Button } from "@/components/ui/button"
 import { PlusCircle, Edit, Trash2, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { getPrompts, savePrompt } from "@/lib/alter-ego-storage"
-import type { Prompt } from "@/lib/types"
+import type { Prompt, SystemPrompt } from "@/lib/types"
 import { v4 as uuidv4 } from "uuid"
 
 export default function PromptsPage() {
@@ -25,9 +25,17 @@ export default function PromptsPage() {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load prompts
-    const loadedPrompts = getPrompts()
-    setPrompts(loadedPrompts)
+    // Load prompts and convert from SystemPrompt to Prompt format
+    const systemPrompts = getPrompts()
+    const convertedPrompts: Prompt[] = systemPrompts.map(p => ({
+      id: p.id,
+      title: p.name,
+      content: p.content,
+      isDefault: p.is_default,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at
+    }))
+    setPrompts(convertedPrompts)
   }, [])
 
   const handleAddPrompt = () => {
@@ -58,20 +66,42 @@ export default function PromptsPage() {
       updatedAt: new Date().toISOString(),
     }
 
-    // If this is being set as default, unset any other defaults
+    // Convert to SystemPrompt format for storage
+    const systemPrompt: SystemPrompt = {
+      id: newPrompt.id,
+      name: newPrompt.title,
+      description: null,
+      content: newPrompt.content,
+      is_default: newPrompt.isDefault,
+      created_at: newPrompt.createdAt,
+      updated_at: newPrompt.updatedAt,
+      user_id: 'local-user-id'
+    }
+
     if (isDefault) {
       const updatedPrompts = prompts.map((p) => ({
         ...p,
         isDefault: p.id === newPrompt.id,
       }))
-
       setPrompts(updatedPrompts)
 
       // Save all prompts
-      updatedPrompts.forEach((p) => savePrompt(p))
+      updatedPrompts.forEach((p) => {
+        const systemPromptToSave: SystemPrompt = {
+          id: p.id,
+          name: p.title,
+          description: null,
+          content: p.content,
+          is_default: p.isDefault,
+          created_at: p.createdAt,
+          updated_at: p.updatedAt,
+          user_id: 'local-user-id'
+        }
+        savePrompt(systemPromptToSave)
+      })
     } else {
       // Just save this prompt
-      savePrompt(newPrompt)
+      savePrompt(systemPrompt)
 
       // Update local state
       setPrompts((prev) => {
@@ -108,11 +138,23 @@ export default function PromptsPage() {
     setPrompts(updatedPrompts)
 
     // Save all prompts
-    updatedPrompts.forEach((p) => savePrompt(p))
+    updatedPrompts.forEach((p) => {
+      const systemPromptToSave: SystemPrompt = {
+        id: p.id,
+        name: p.title,
+        description: null,
+        content: p.content,
+        is_default: p.isDefault,
+        created_at: p.createdAt,
+        updated_at: p.updatedAt,
+        user_id: 'local-user-id'
+      }
+      savePrompt(systemPromptToSave)
+    })
   }
 
   return (
-    <AppLayout>
+    <PageLayout>
       <div className="container mx-auto py-8 px-4">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Prompt Templates</h1>
@@ -234,6 +276,6 @@ export default function PromptsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AppLayout>
+    </PageLayout>
   )
 }

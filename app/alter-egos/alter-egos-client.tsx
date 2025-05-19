@@ -109,13 +109,9 @@ export default function AlterEgosClient() {
     setCategories(reorderedCategories)
     
     try {
-      await updateAlterEgoCategoryPositions(
-        userId,
-        reorderedCategories.map((cat, index) => ({
-          id: cat.id,
-          position: index
-        }))
-      )
+      // Extract just the category IDs in their new order
+      const orderedCategoryIds = reorderedCategories.map(cat => cat.id);
+      await updateAlterEgoCategoryPositions(userId, orderedCategoryIds);
     } catch (error) {
       console.error('Error updating category positions:', error)
     }
@@ -198,11 +194,10 @@ export default function AlterEgosClient() {
             <DialogTitle>Add New Alter Ego</DialogTitle>
           </DialogHeader>
           <AlterEgoForm
-            onSubmit={(newAlterEgo) => {
+            onSave={(newAlterEgo) => {
               handleAddAlterEgo(newAlterEgo)
               setIsAddingAlterEgo(false)
             }}
-            categories={categories}
           />
         </DialogContent>
       </Dialog>

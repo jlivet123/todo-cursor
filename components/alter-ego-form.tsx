@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { saveAlterEgo, getCategories } from "@/lib/alter-ego-storage"
-import type { AlterEgoWithCategories, Category, AlterEgoFormData } from "@/lib/types"
+import type { AlterEgoWithCategories, AlterEgoCategory, AlterEgoFormData } from "@/lib/types"
 import { Upload, X } from "lucide-react"
 
 interface AlterEgoFormProps {
@@ -40,7 +40,7 @@ export function AlterEgoForm({ onSave, alterEgo, initialCategoryId }: AlterEgoFo
     category_ids: alterEgo?.categories.map((c) => c.id) || (initialCategoryId ? [initialCategoryId] : []),
   })
 
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<AlterEgoCategory[]>([])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(alterEgo?.image_url || null)
 
@@ -118,6 +118,7 @@ export function AlterEgoForm({ onSave, alterEgo, initialCategoryId }: AlterEgoFo
             id,
             name: "Unknown",
             description: null,
+            position: 0,
             created_at: new Date().toISOString(),
             user_id: MOCK_USER_ID,
           }

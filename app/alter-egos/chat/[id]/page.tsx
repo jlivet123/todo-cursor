@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { AppLayout } from "@/components/app-layout"
+import { PageLayout } from "@/components/page-layout"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Send, Settings } from "lucide-react"
@@ -251,14 +251,14 @@ export default function AlterEgoChatPage() {
 
   if (!alterEgo) {
     return (
-      <AppLayout>
+      <PageLayout>
         <div className="container mx-auto py-8 px-4 text-center">Loading...</div>
-      </AppLayout>
+      </PageLayout>
     )
   }
 
   return (
-    <AppLayout>
+    <PageLayout>
       <div className="flex flex-col h-[calc(100vh-64px)]">
         {/* Chat header */}
         <div className="border-b p-4 flex items-center justify-between">
@@ -400,6 +400,6 @@ export default function AlterEgoChatPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AppLayout>
+    </PageLayout>
   )
 }

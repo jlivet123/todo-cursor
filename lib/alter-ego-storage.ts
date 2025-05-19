@@ -103,7 +103,7 @@ const DEFAULT_PROMPTS: SystemPrompt[] = [
 ]
 
 // Get all alter egos with their categories
-export function getAlterEgos(userId: string): AlterEgoWithCategories[] {
+export function getAlterEgos(userId: string = MOCK_USER_ID): AlterEgoWithCategories[] {
   if (!isBrowser()) return []
 
   try {
@@ -239,7 +239,7 @@ export function updateCategoryPositions(categoryIds: string[]): boolean {
 
 // Get alter ego by ID with its categories
 export function getAlterEgoById(id: string): AlterEgoWithCategories | null {
-  const alterEgos = getAlterEgos()
+  const alterEgos = getAlterEgos(MOCK_USER_ID)
   return alterEgos.find((ego) => ego.id === id) || null
 }
 
@@ -414,7 +414,7 @@ export function getChats(): ChatWithMessages[] {
     const messagesJson = localStorage.getItem(CHAT_MESSAGES_KEY)
     const messages: ChatMessage[] = messagesJson ? JSON.parse(messagesJson) : []
 
-    const alterEgos = getAlterEgos()
+    const alterEgos = getAlterEgos(MOCK_USER_ID)
 
     // Join chats with their messages and alter ego
     return chats.map((chat) => {
