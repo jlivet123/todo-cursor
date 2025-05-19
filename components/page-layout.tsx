@@ -22,7 +22,7 @@ export function PageLayout({
   const isTaskListPage = pathname === "/tasks"
 
   return (
-    <div className="flex h-screen bg-slate-900 text-white">
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex">
       {/* Navigation Sidebar - Only pass column control functions when on task list page */}
       <NavigationSidebar 
         isTaskListPage={isTaskListPage}
@@ -31,9 +31,9 @@ export function PageLayout({
       />
       
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto">
         {children}
-      </main>
+      </div>
     </div>
   )
 }

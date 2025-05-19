@@ -17,6 +17,7 @@ interface CategoryTabsProps {
   onCategoryAdded?: (category: AlterEgoCategory) => void
   onCategoryDeleted?: (categoryId: string) => void
   onCategoriesReordered?: (categories: AlterEgoCategory[]) => void
+  onCategoryUpdated?: (category: AlterEgoCategory) => void
 }
 
 export function CategoryTabs({
@@ -27,6 +28,7 @@ export function CategoryTabs({
   onCategoryAdded,
   onCategoryDeleted,
   onCategoriesReordered,
+  onCategoryUpdated,
 }: CategoryTabsProps) {
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [isManagingCategories, setIsManagingCategories] = useState(false)
@@ -52,7 +54,7 @@ export function CategoryTabs({
       })
 
       const newCategory = await createAlterEgoCategory(userId, trimmedName)
-      
+
       if (newCategory) {
         console.log('Successfully created category:', newCategory)
         setNewCategoryName("")
@@ -77,12 +79,10 @@ export function CategoryTabs({
   }
 
   const handleCategoryDeleted = (categoryId: string) => {
-    // If the deleted category was active, switch to "All"
     if (activeCategory === categoryId && onCategoryChange) {
       onCategoryChange("all")
     }
 
-    // Notify parent component
     if (onCategoryDeleted) {
       onCategoryDeleted(categoryId)
     }
@@ -119,7 +119,6 @@ export function CategoryTabs({
         </Button>
       </div>
 
-      {/* Add Category Dialog */}
       <Dialog open={isAddingCategory} onOpenChange={setIsAddingCategory}>
         <DialogContent>
           <DialogHeader>
@@ -140,7 +139,6 @@ export function CategoryTabs({
         </DialogContent>
       </Dialog>
 
-      {/* Category Management Modal */}
       <CategoryManagementModal
         open={isManagingCategories}
         onOpenChange={setIsManagingCategories}
@@ -148,7 +146,8 @@ export function CategoryTabs({
         userId={userId}
         onCategoryDeleted={handleCategoryDeleted}
         onCategoriesReordered={handleCategoriesReordered}
+        onCategoryUpdated={onCategoryUpdated}
       />
     </>
   )
-}
+} 

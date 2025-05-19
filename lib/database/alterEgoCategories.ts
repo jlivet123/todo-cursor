@@ -10,6 +10,26 @@ const DEFAULT_CATEGORIES = [
   'Entrepreneurs',
 ];
 
+export async function renameAlterEgoCategory(userId: string, categoryId: string, newName: string) {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error("Supabase client is not initialized")
+
+  const { data, error } = await supabase
+    .from("alter_ego_categories")
+    .update({ name: newName })
+    .eq("id", categoryId)
+    .eq("user_id", userId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Failed to rename category", error)
+    return null
+  }
+
+  return data
+}
+
 export async function ensureDefaultAlterEgoCategories(userId: string): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase client not initialized');
@@ -130,23 +150,57 @@ export async function createAlterEgoCategory(
 export async function updateAlterEgoCategoryPositions(
   userId: string, 
   orderedCategoryIds: string[]
-): Promise<void> {
+): Promise<{ success: boolean; error?: string }> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase client not initialized');
 
-  // Filter out the "all" category
-  const dbCategoryIds = orderedCategoryIds.filter(id => id !== 'all');
+  try {
+    // Filter out the "all" category and any undefined/null values
+    const dbCategoryIds = orderedCategoryIds.filter(id => id && id !== 'all');
 
-  // Update positions for each category
-  const updates = dbCategoryIds.map((categoryId, index) => 
-    supabase
+    // Verify that all categories belong to the user first
+    const { data: existingCategories, error: fetchError } = await supabase
       .from('alter_ego_categories')
-      .update({ position: index + 1 }) // Use 1-based positions in DB
-      .eq('id', categoryId)
+      .select('id')
       .eq('user_id', userId)
-  );
+      .in('id', dbCategoryIds);
 
-  await Promise.all(updates);
+    if (fetchError) {
+      console.error('Error fetching categories:', fetchError);
+      return { success: false, error: 'Failed to verify category ownership' };
+    }
+
+    // Ensure all categories exist and belong to the user
+    const existingIds = new Set(existingCategories?.map(cat => cat.id));
+    const invalidIds = dbCategoryIds.filter(id => !existingIds.has(id));
+    if (invalidIds.length > 0) {
+      console.error('Invalid category IDs:', invalidIds);
+      return { success: false, error: 'One or more categories are invalid' };
+    }
+
+    // Update positions for each category
+    const updates = dbCategoryIds.map((categoryId, index) => 
+      supabase
+        .from('alter_ego_categories')
+        .update({ position: index + 1 }) // Use 1-based positions in DB
+        .eq('id', categoryId)
+        .eq('user_id', userId)
+    );
+
+    // Execute all updates and collect results
+    const results = await Promise.all(updates);
+    const failed = results.find(res => res.error);
+
+    if (failed) {
+      console.error('Failed to update some category positions:', failed.error);
+      return { success: false, error: 'Failed to update category positions' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating category positions:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
 }
 
 export async function deleteAlterEgoCategory(

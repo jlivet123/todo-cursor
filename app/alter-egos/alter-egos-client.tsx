@@ -16,7 +16,8 @@ import {
   fetchAlterEgoCategories,
   createAlterEgoCategory,
   updateAlterEgoCategoryPositions,
-  deleteAlterEgoCategory
+  deleteAlterEgoCategory,
+  renameAlterEgoCategory
 } from "@/lib/database/alterEgoCategories"
 
 export default function AlterEgosClient() {
@@ -56,14 +57,9 @@ export default function AlterEgosClient() {
 
   const loadData = async (userId: string) => {
     try {
-      // 1. Ensure default categories exist in DB
       await ensureDefaultAlterEgoCategories(userId)
-      
-      // 2. Fetch categories from DB
       const categories = await fetchAlterEgoCategories(userId)
       setCategories(categories)
-      
-      // 3. Fetch alter egos from local storage
       const alterEgos = getAlterEgos(userId)
       setAlterEgos(alterEgos)
     } catch (error) {
@@ -107,14 +103,16 @@ export default function AlterEgosClient() {
   const handleCategoriesReordered = async (reorderedCategories: AlterEgoCategory[]) => {
     if (!userId) return
     setCategories(reorderedCategories)
-    
     try {
-      // Extract just the category IDs in their new order
-      const orderedCategoryIds = reorderedCategories.map(cat => cat.id);
-      await updateAlterEgoCategoryPositions(userId, orderedCategoryIds);
+      const orderedCategoryIds = reorderedCategories.map(cat => cat.id)
+      await updateAlterEgoCategoryPositions(userId, orderedCategoryIds)
     } catch (error) {
       console.error('Error updating category positions:', error)
     }
+  }
+
+  const handleCategoryUpdated = (updatedCategory: AlterEgoCategory) => {
+    setCategories(prev => prev.map(cat => cat.id === updatedCategory.id ? updatedCategory : cat))
   }
 
   const filteredAlterEgos = alterEgos.filter(ego => 
@@ -122,21 +120,8 @@ export default function AlterEgosClient() {
     ego.categories.some(category => category.id === activeCategory)
   )
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto py-8 px-4">
-        <div className="flex justify-between items-center mb-6">
-          <div className="h-8 w-32 bg-gray-200 rounded animate-pulse"></div>
-          <div className="h-8 w-24 bg-gray-200 rounded animate-pulse"></div>
-        </div>
-        <div className="h-12 w-full bg-gray-200 rounded mb-8 animate-pulse"></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-48 bg-gray-200 rounded animate-pulse"></div>
-          ))}
-        </div>
-      </div>
-    )
+  if (isLoading || userId === null || categories.length === 0) {
+    return null // or keep showing the skeleton, but ONLY on client
   }
 
   if (!userId) {
@@ -170,6 +155,7 @@ export default function AlterEgosClient() {
         onCategoryAdded={handleCategoryAdded}
         onCategoryDeleted={handleCategoryDeleted}
         onCategoriesReordered={handleCategoriesReordered}
+        onCategoryUpdated={handleCategoryUpdated}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
